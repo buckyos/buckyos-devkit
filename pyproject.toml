@@ -1,0 +1,68 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "buckyos-devkit"
+version = "0.1.0"
+description = "BuckyOS共用的开发脚本基础库，包含构建、安装、远程管理等工具"
+readme = "reademe.md"
+requires-python = ">=3.8"
+license = {text = "MIT"}
+authors = [
+    {name = "BuckyOS Team"}
+]
+keywords = ["buckyos", "devkit", "build-tools", "development"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: OS Independent",
+]
+
+dependencies = [
+    "pyyaml>=6.0",
+    "paramiko>=3.0.0",
+    "requests>=2.28.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "black>=23.0",
+    "flake8>=6.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/buckyos/bucky-devkit"
+Repository = "https://github.com/buckyos/bucky-devkit.git"
+Issues = "https://github.com/buckyos/bucky-devkit/issues"
+
+[project.scripts]
+buckyos-build = "buckyos_devkit.build:build_main"
+buckyos-install = "buckyos_devkit.install:main"
+buckyos-remote = "buckyos_devkit.remote.main:main"
+
+[tool.setuptools]
+packages = ["buckyos_devkit", "buckyos_devkit.remote"]
+
+[tool.setuptools.package-dir]
+buckyos_devkit = "src"
+"buckyos_devkit.remote" = "src/remote"
+
+[tool.setuptools.package-data]
+buckyos_devkit = ["remote/dev_configs/**/*"]
+
+[tool.black]
+line-length = 120
+target-version = ['py38', 'py39', 'py310', 'py311']
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+
