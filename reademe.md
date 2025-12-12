@@ -6,9 +6,28 @@ buckyos-devkit 是 BuckyOS 共用的开发脚本基础库。支持用如下方�
 
 ### 安装
 
+**从 GitHub 安装**（项目发布后）:
+
 ```bash
 pip install "buckyos-devkit @ git+https://github.com/buckyos/bucky-devkit.git"
 ```
+
+**本地开发安装**（当前推荐）:
+
+```bash
+# 1. 创建并激活虚拟环境
+cd /Users/liuzhicong/project/buckyos-devkit
+python3 -m venv test_devkit
+source test_devkit/bin/activate
+
+# 2. 安装包（可编辑模式）
+pip3 install -e .
+
+# 3. 验证安装
+python3 test_installation.py
+```
+
+> 📝 详细的本地安装步骤和故障排除，请参考 [LOCAL_INSTALL.md](./LOCAL_INSTALL.md)
 
 ### 命令行工具
 

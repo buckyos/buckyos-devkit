@@ -5,8 +5,15 @@ BuckyOS DevKit Remote - 远程管理工具
 """
 
 from .worksapce import Workspace
-from .remote_device import RemoteDevice
-from .vm_mgr import VMMgr
+from .remote_device import RemoteDeviceInterface, VMInstanceRemoteDevice
+from .vm_mgr import VMManager, VMNodeList, VMConfig
 
-__all__ = ["Workspace", "RemoteDevice", "VMMgr"]
+__all__ = [
+    "Workspace",
+    "RemoteDeviceInterface",
+    "VMInstanceRemoteDevice",
+    "VMManager",
+    "VMNodeList",
+    "VMConfig",
+]
 

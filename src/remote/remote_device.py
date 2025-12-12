@@ -4,10 +4,7 @@ import subprocess
 import sys
 from typing import Protocol, runtime_checkable, Tuple
 
-current_dir = os.path.dirname(os.path.abspath(__file__))
-sys.path.append(current_dir)
-
-from vm_mgr import VMManager
+from .vm_mgr import VMManager
 
 
 

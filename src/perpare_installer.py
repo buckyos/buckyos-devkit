@@ -12,8 +12,8 @@ import subprocess
 import time
 import glob
 import platform
-import prepare_packages
 from urllib.request import urlretrieve
+from . import prepare_packages
 
 src_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 rootfs_dir = os.path.join(src_dir, "rootfs")

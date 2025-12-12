@@ -2,14 +2,13 @@ import tempfile
 import os
 import sys
 import platform
-import platform
 
-import build_web_apps
-import build_rust
-import prepare_rootfs
-import install
-import build_tray_controller
-import make_config
+from . import build_web_apps
+from . import build_rust
+from . import prepare_rootfs
+from . import install
+from . import build_tray_controller
+from . import make_config
 
 if platform.system() == "Windows":
     temp_dir = tempfile.gettempdir()

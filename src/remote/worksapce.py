@@ -11,11 +11,9 @@ import time
 import platform
 from typing import Optional
 
-current_dir = os.path.dirname(os.path.abspath(__file__))
-sys.path.append(current_dir)
-from app_list import AppConfig, AppList
-from remote_device import RemoteDeviceInterface, VMInstanceRemoteDevice
-from vm_mgr import VMManager, VMNodeList
+from .app_list import AppConfig, AppList
+from .remote_device import RemoteDeviceInterface, VMInstanceRemoteDevice
+from .vm_mgr import VMManager, VMNodeList
 
 
 def get_temp_dir() -> Path:
