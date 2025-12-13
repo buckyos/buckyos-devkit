@@ -9,7 +9,7 @@ buckyos-devkit 是 BuckyOS 共用的开发脚本基础库。支持用如下方�
 **从 GitHub 安装**（项目发布后）:
 
 ```bash
-pip install "buckyos-devkit @ git+https://github.com/buckyos/bucky-devkit.git"
+pip install "buckyos-devkit @ git+https://github.com/buckyos/buckyos-devkit.git"
 ```
 
 **本地开发安装**（当前推荐）:

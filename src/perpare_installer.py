@@ -1,10 +1,10 @@
-# 从make_deb的逻辑整理而来，平台无关的安装包前的准备工作
-# 1. 拷贝rootfs到某个指定的文件夹，一般是/tmp下的某个Installer相关文件夹
-# 2. 清除掉拷贝后的rootfs/bin，之后要重新组织
-# 3. 调用perpare_packages，准备好新的PackageMeta
-# 4. 从官方源下载现在的meta db文件
-# 5. 将新版本的PackageMeta添加进本地的meta db里, 并重新"install"bin文件夹
-# 4. 整理和移除不需要的文件
+# Extracted from make_deb logic, platform-independent preparation work before packaging
+# 1. Copy rootfs to a specified folder, usually an Installer-related folder under /tmp
+# 2. Clear the copied rootfs/bin, to be reorganized later
+# 3. Call prepare_packages to prepare new PackageMeta
+# 4. Download current meta db file from official source
+# 5. Add new version PackageMeta to local meta db and re-"install" bin folder
+# 6. Organize and remove unnecessary files
 import os
 import shutil
 import json
@@ -19,7 +19,7 @@ src_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 rootfs_dir = os.path.join(src_dir, "rootfs")
 base_meta_db_url = "https://buckyos.ai/ndn/repo/meta_index.db/content"
 
-# 如果有定义BUCKYCLI_PATH环境变量，就使用这个变量作为CLI的执行文件
+# If BUCKYCLI_PATH environment variable is defined, use it as the CLI executable
 def default_buckycli_path():
     buckycli_path = os.path.join(src_dir, "rootfs/bin/buckycli", "buckycli")
     if platform.system() == "Windows":
@@ -48,7 +48,7 @@ def prepare_meta_db(rootfs_dir):
                 subprocess.run([buckycli_path,"set_pkg_meta",pkg_item,root_env_db_path], check=True)
                 print(f"# add pkg_meta_info to meta db from {pkg_item}")
         else:
-            # 为什么会有这样的场景存在？
+            # Why does this scenario exist?
             if pkg_item.endswith(".json") and not pkg_item.endswith("pkg.cfg.json"):
                 subprocess.run([buckycli_path,"set_pkg_meta",pkg_item,root_env_db_path], check=True)
                 print(f"# add pkg_meta_info to meta db from {pkg_item}")

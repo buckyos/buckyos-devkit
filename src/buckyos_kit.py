@@ -3,17 +3,19 @@ import platform
 import os
 import locale
 
-system = platform.system()
-ext = ""
-if system == "Windows":
-    ext = ".exe"
+_system_name = platform.system()
+
+def get_execute_name(file_name: str) -> str:
+    if _system_name == "Windows":
+        return file_name + ".exe"
+    return file_name
 
 def ensure_directory_accessible(directory_path):
     if not os.path.exists(directory_path):
         os.makedirs(directory_path, exist_ok=True)
     os.system(f"chmod 777 -R {directory_path}")
     
-# 获取系统默认编码
+# Get system default encoding
 def get_system_encoding():
     try:
         return locale.getpreferredencoding()
@@ -42,23 +44,23 @@ def get_session_token_env_key(app_full_id: str, is_app_service: bool) -> str:
 def get_full_appid(app_id: str, owner_user_id: str) -> str:
     return f"{owner_user_id}-{app_id}"
 
-# TODO:process_full_path是目标进程的完整路径
+# TODO: process_full_path is the full path to the target process
 def check_process_exists(process_full_path):
-    if system == "Windows":
-        # 使用tasklist命令检查进程
+    if _system_name == "Windows":
+        # Use tasklist command to check process
         if not process_full_path.endswith(".exe"):
             process_full_path = process_full_path + ".exe"
         try:
             process_name = os.path.basename(process_full_path)
             check_args = ["tasklist", "/FI", f"IMAGENAME eq {process_name}", "/FO", "CSV"]
             output = subprocess.check_output(check_args).decode(get_system_encoding(), errors='ignore')
-            # 检查输出中是否包含进程名（排除标题行）
+            # Check if output contains process name (excluding header line)
             lines = output.strip().split('\n')
-            if len(lines) > 1:  # 有数据行
+            if len(lines) > 1:  # Has data rows
                 return True
             return False
         except (subprocess.CalledProcessError, FileNotFoundError):
-            # 如果tasklist失败，尝试使用wmic（兼容性）
+            # If tasklist fails, try wmic (for compatibility)
             try:
                 check_args = ["wmic", "process", "where", f"ExecutablePath like '%{process_full_path}%'", "get", "ProcessId", "/format:list"]
                 output = subprocess.check_output(check_args).decode(get_system_encoding(), errors='ignore')
@@ -67,15 +69,15 @@ def check_process_exists(process_full_path):
                 print(f"Warning: Unable to check process existence on Windows. Both tasklist and wmic failed.")
                 return False
     else:
-        # pgrep 使用 -f 选项可以匹配完整的命令行，包括完整路径
-        # 如果 process_full_path 是进程名称，则直接匹配
-        # 如果是完整路径，则使用 -f 选项进行模式匹配
+        # pgrep with -f option can match full command line including complete path
+        # If process_full_path is a process name, match directly
+        # If it's a full path, use -f option for pattern matching
         check_args = ["pgrep", "-f", process_full_path]
 
         try:
             output = subprocess.check_output(check_args).decode()
             #print(f"check_process_exists {process_name} output: {output}")
-            return bool(output.strip())  # 如果输出不为空，则进程存在
+            return bool(output.strip())  # If output is not empty, process exists
         except subprocess.CalledProcessError:
             return False
 
@@ -95,10 +97,10 @@ def check_port(port) -> bool:
 
 def kill_process(name):
     killall_command = "killall"
-    if system == "Windows":
+    if _system_name == "Windows":
         killall_command = "taskkill /F /IM"
 
-    if os.system(f"{killall_command} {name}{ext}") != 0:
+    if os.system(f"{killall_command} {get_execute_name(name)}") != 0:
         print(f"{name} not running")
     else:
         print(f"{name} killed")
@@ -106,12 +108,12 @@ def kill_process(name):
 def nohup_start(run_cmd, env_vars=None):
     cmd = f"nohup {run_cmd} > /dev/null 2>&1 &"
     creationflags = 0
-    if system == "Windows":
+    if _system_name == "Windows":
         cmd = f"start /min {run_cmd}"
         creationflags = subprocess.DETACHED_PROCESS|subprocess.CREATE_NEW_PROCESS_GROUP|subprocess.CREATE_NO_WINDOW
-    print(f"will run cmd {cmd} on system {system}")
+    print(f"will run cmd {cmd} on system {_system_name}")
     
-    # 创建环境变量字典
+    # Create environment variables dictionary
     env = os.environ.copy()
     if env_vars:
         env.update(env_vars)
@@ -124,7 +126,7 @@ def get_buckyos_root():
     if buckyos_root:
         return buckyos_root
 
-    if system == "Windows":
+    if _system_name == "Windows":
         user_data_dir = os.environ.get("APPDATA")
         if not user_data_dir:
             user_data_dir = os.environ.get("USERPROFILE", ".")

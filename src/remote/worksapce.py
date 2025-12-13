@@ -1,5 +1,5 @@
 """
-配置管理器：读取和解析配置文件
+Configuration manager: Read and parse configuration files
 """
 import re
 import os
@@ -38,7 +38,7 @@ class Workspace:
         self.app_list : AppList= None
 
     def load(self):
-        # 加载workspace中的配置
+        # Load configuration from workspace
         nodes_config_path = self.workspace_dir / "nodes.json"
         self.nodes = VMNodeList()
         self.nodes.load_from_file(nodes_config_path)
@@ -53,11 +53,11 @@ class Workspace:
         env_params = {}
         if parent_env_params is not None:
             env_params.update(parent_env_params)
-        # 获得所有的环境变量
+        # Get all environment variables
         system_env_params = os.environ.copy()
         system_env_params["base_dir"] = str(self.base_dir)
         env_params["system"] = system_env_params
-        # 根据self.nodes中的配置，构建env_params
+        # Build env_params based on configuration in self.nodes
         for node_id in self.nodes.get_all_node_ids():
             device_info = self.remote_devices[node_id].get_device_info()
             env_params[node_id] = device_info
@@ -72,18 +72,18 @@ class Workspace:
             self.remote_devices[node_id] = remote_device
         
     
-    def clean_vms(self):#ok
-        # 根据workspace中的nodes中的配置，删除vm
+    def clean_vms(self):
+        # Delete VMs based on nodes configuration in workspace
         vm_mgr = VMManager.get_instance()
         for node_id,node_config in self.nodes.nodes.items():
             vm_mgr.delete_vm(node_id)
 
-    def create_vms(self):#ok
-        # 根据workspace中的nodes中的配置，创建vm
+    def create_vms(self):
+        # Create VMs based on nodes configuration in workspace
         vm_mgr = VMManager.get_instance()
         for node_id,node_config in self.nodes.nodes.items():
             vm_mgr.create_vm(node_id, node_config)
-        # 所有的vm创建完成，按顺序调用init_commands
+        # After all VMs are created, call init_commands in order
         print(f"all nodes created, call instance_commands after 10 seconds...")
         time.sleep(10)
         env_params = self.build_env_params()
@@ -99,34 +99,34 @@ class Workspace:
             for command in node_config.instance_commands:
                 self.run(node_id, [command], env_params)
 
-    def stop_vms(self):#ok
-        # 根据workspace中的nodes中的配置，停止vm
+    def stop_vms(self):
+        # Stop VMs based on nodes configuration in workspace
         vm_mgr = VMManager.get_instance()
         for node_id,node_config in self.nodes.nodes.items():
             vm_mgr.stop_vm(node_id)
 
-    def start_vms(self):#ok
-        # 根据workspace中的nodes中的配置，启动vm
+    def start_vms(self):
+        # Start VMs based on nodes configuration in workspace
         vm_mgr = VMManager.get_instance()
         for node_id,node_config in self.nodes.nodes.items():
             vm_mgr.start_vm(node_id)
 
-    def snapshot(self, snapshot_name: str):#ok
-        # 根据workspace中的nodes中的配置，创建快照
+    def snapshot(self, snapshot_name: str):
+        # Create snapshots based on nodes configuration in workspace
         vm_mgr = VMManager.get_instance()
         for node_id,node_config in self.nodes.nodes.items():
             print(f"create snapshot {snapshot_name} for node: {node_id}")
             vm_mgr.snapshot(node_id, snapshot_name)
         
 
-    def restore(self, snapshot_name: str):#ok
-        # 根据workspace中的nodes中的配置，恢复快照
+    def restore(self, snapshot_name: str):
+        # Restore snapshots based on nodes configuration in workspace
         vm_mgr = VMManager.get_instance()
         for node_id,node_config in self.nodes.nodes.items():
             vm_mgr.restore(node_id, snapshot_name)
 
-    def info_vms(self):#ok
-        # 根据workspace中的nodes中的配置，查看vm状态
+    def info_vms(self):
+        # View VM status based on nodes configuration in workspace
         info = {}
         for node_id,node_config in self.nodes.nodes.items():
             vm_mgr = VMManager.get_instance()
@@ -140,7 +140,7 @@ class Workspace:
         return info
 
     def install(self, device_id: str,app_list:list[str] = None):
-        # 根据workspace中的app_list中的配置，向remote_device安装app
+        # Install apps to remote_device based on app_list configuration in workspace
         if app_list is None:
             app_list = self.app_list.get_all_app_names()
         print(f"install apps to device: {device_id} with apps: {app_list}")
@@ -163,16 +163,16 @@ class Workspace:
             target_dir = app_config.get_dir("target")
             self.execute_app_command(device_id, app_name, "build_all",True)
             
-            ## 根据目录设置，将Host上的Source目录的文件推送到remote_device的target目录
+            # Push files from Host Source directory to remote_device target directory based on directory settings
             remote_device.push(source_dir, target_dir)
             self.execute_app_command(device_id, app_name, "install")
         
 
     def update(self, device_id: str,app_list:list[str] = None):
-        # 根据workspace中的app_list中的配置，向remote_device更新app
+        # Update apps on remote_device based on app_list configuration in workspace
         # 
-        ## 先在host上运行 build 脚本
-        ## 根据目录设置，将Host上的source_bin目录的文件推送到remote_device的target_bin目录
+        # First run build script on host
+        # Then push files from Host source_bin directory to remote_device target_bin directory based on directory settings
         if app_list is None:
             app_list = self.app_list.get_all_app_names()
 
@@ -194,12 +194,12 @@ class Workspace:
             target_bin_dir = app_config.get_dir("target_bin")
             self.execute_app_command(device_id, app_name, "build",True)
             
-            ## 根据目录设置，将Host上的Source目录的文件推送到remote_device的target目录
+            # Push files from Host Source directory to remote_device target directory based on directory settings
             remote_device.push(source_bin_dir, target_bin_dir)
             self.execute_app_command(device_id, app_name, "update")
 
-    def execute_app_command(self, device_id: Optional[str],app_name: str,cmd_name: str ,run_in_host: bool = False):#ok
-        # 根据workspace中的app_list中的配置，向remote_device执行action，执行的内部会调用run
+    def execute_app_command(self, device_id: Optional[str],app_name: str,cmd_name: str ,run_in_host: bool = False):
+        # Execute action on remote_device based on app_list configuration in workspace, internally calls run
         vm_config = self.nodes.get_node(device_id)
         if vm_config is None:
             raise ValueError(f"Node '{device_id}' not found")
@@ -223,16 +223,16 @@ class Workspace:
         else:
             self.run(device_id, command_config, env_params)
 
-    def resolve_string(self, text: str,env_params: dict) -> str:#ok
+    def resolve_string(self, text: str,env_params: dict) -> str:
         """
-        解析字符串中的所有变量引用
+        Resolve all variable references in string
         
         Args:
-            text: 包含变量引用的字符串
-            env_params: 环境参数
+            text: String containing variable references
+            env_params: Environment parameters
         
         Returns:
-            str: 解析后的字符串
+            str: Resolved string
         """
         def replace_var(match):
             obj_id = match.group(1)
@@ -265,12 +265,12 @@ class Workspace:
                 remote_device.run_command(new_command)
 
     def state(self,device_id: str):
-        # 根据workspace中的app_list中的配置，查看remote_devices上的app状态（其实是通过执行action来查看）
+        # View app status on remote_devices based on app_list configuration in workspace (actually viewed by executing actions)
         pass
 
-    def clog(self,target_dir: Optional[Path] = None):#ok
-        # 根据workspace中的remote_devices中的配置，收集remote_devices上的日志到本地
-        # 收集node里定义的系统日志目录，到本地
+    def clog(self,target_dir: Optional[Path] = None):
+        # Collect logs from remote_devices to local based on remote_devices configuration in workspace
+        # Collect system log directories defined in nodes to local
         if target_dir is None:
             if platform.system() == "Windows":
                 target_dir = get_temp_dir().joinpath("clogs")

@@ -215,7 +215,7 @@ def install(install_all=False):
     # Set data directory permissions after installation
     set_data_dir_permissions()
 
-def main():
+def install_main():
     import sys
     install_all = "--all" in sys.argv
     print(f"Installing to {install_root_dir}, install_all: {install_all}")
@@ -223,4 +223,4 @@ def main():
     install_apps()
 
 if __name__ == "__main__":
-    main()
+    install_main()

@@ -1,7 +1,7 @@
 """
-BuckyOS DevKit Remote - 远程管理工具
+BuckyOS DevKit Remote - Remote management tools
 
-用于管理虚拟机和远程设备上的应用部署。
+For managing VMs and application deployment on remote devices.
 """
 
 from .worksapce import Workspace

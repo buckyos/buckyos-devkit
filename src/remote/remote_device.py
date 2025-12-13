@@ -48,10 +48,10 @@ class RemoteDevice(RemoteDeviceInterface):
             raise Exception("device info not found")
         self.remote_ip = device_info.get('ipv4', ['127.0.0.1'])[0]
         
-        # 检测设备类型：如果有 vm 配置，使用 vm_mgr；否则使用 SSH
+        # Detect device type: if vm config exists, use vm_mgr; otherwise use SSH
         self.is_vm = 'vm' in config
         if self.is_vm:
-            # 根据 vm 配置选择后端类型，默认为 multipass
+            # Select backend type based on vm config, default is multipass
             vm_config = config.get('vm', {})
             backend_type = vm_config.get('backend', 'multipass')
             self.vm_manager = VMManager(backend_type=backend_type)
@@ -76,13 +76,13 @@ class RemoteDevice(RemoteDeviceInterface):
             return None    
         
     def _load_config(self):
-        # 先尝试从新配置系统加载（nodes.json）
+        # First try loading from new config system (nodes.json)
         try:
             import config_mgr
             config_manager = config_mgr.ConfigManager()
             node_config = config_manager.get_node(self.device_id)
             
-            # 转换为旧格式以保持兼容性
+            # Convert to old format for compatibility
             config = {
                 'username': 'root',
                 'port': 22,
@@ -94,7 +94,7 @@ class RemoteDevice(RemoteDeviceInterface):
                 'apps': {}
             }
             
-            # 转换 apps 列表为字典格式
+            # Convert apps list to dictionary format
             apps_list = node_config.get('apps', [])
             for app_name in apps_list:
                 try:
@@ -108,10 +108,10 @@ class RemoteDevice(RemoteDeviceInterface):
             
             return config
         except (ImportError, ValueError, FileNotFoundError):
-            # 如果新配置系统不可用，回退到旧配置
+            # If new config system is unavailable, fall back to old config
             pass
         
-        # 回退到旧配置系统
+        # Fall back to old config system
         try:
             with open(ENV_CONFIG, 'r') as f:
                 configs = json.load(f)
@@ -122,50 +122,50 @@ class RemoteDevice(RemoteDeviceInterface):
     
     def pull(self, remote_path, local_path, recursive=False):
         """
-        从远程设备拉取文件或目录到本地（通用接口）
-        根据设备类型自动选择使用 vm_mgr 或 SSH
+        Pull file or directory from remote device to local (generic interface)
+        Automatically select vm_mgr or SSH based on device type
         
         Args:
-            remote_path: 远程文件或目录路径
-            local_path: 本地目标路径
-            recursive: 是否递归复制目录
+            remote_path: Remote file or directory path
+            local_path: Local target path
+            recursive: Whether to recursively copy directories
         """
         if self.is_vm and self.vm_manager:
-            # 使用 vm_mgr 接口
+            # Use vm_mgr interface
             success = self.vm_manager.pull_file(self.device_id, remote_path, local_path, recursive)
             if not success:
                 raise Exception(f"Failed to pull file from VM {self.device_id}")
         else:
-            # 使用 SSH/SCP
+            # Use SSH/SCP
             self._scp_pull(remote_path, local_path, recursive)
     
     def push(self, local_path, remote_path, recursive=False):
         """
-        推送本地文件或目录到远程设备（通用接口）
-        根据设备类型自动选择使用 vm_mgr 或 SSH
+        Push local file or directory to remote device (generic interface)
+        Automatically select vm_mgr or SSH based on device type
         
         Args:
-            local_path: 本地文件或目录路径
-            remote_path: 远程目标路径
-            recursive: 是否递归复制目录
+            local_path: Local file or directory path
+            remote_path: Remote target path
+            recursive: Whether to recursively copy directories
         """
         if self.is_vm and self.vm_manager:
-            # 使用 vm_mgr 接口
+            # Use vm_mgr interface
             success = self.vm_manager.push_file(self.device_id, local_path, remote_path, recursive)
             if not success:
                 raise Exception(f"Failed to push file to VM {self.device_id}")
         else:
-            # 使用 SSH/SCP
+            # Use SSH/SCP
             self._scp_put(local_path, remote_path, recursive)
     
     def _scp_pull(self, remote_path, local_path, recursive=False):
         """
-        使用 scp 将远程文件或目录复制到本地（内部方法）
+        Copy remote file or directory to local using scp (internal method)
         
         Args:
-            remote_path: 远程文件或目录路径
-            local_path: 本地目标路径
-            recursive: 是否递归复制目录
+            remote_path: Remote file or directory path
+            local_path: Local target path
+            recursive: Whether to recursively copy directories
         """
         scp_command = [
             "scp",
@@ -185,12 +185,12 @@ class RemoteDevice(RemoteDeviceInterface):
 
     def _scp_put(self, local_path, remote_path, recursive=False):
         """
-        使用 scp 将本地文件或目录复制到远程设备（内部方法）
+        Copy local file or directory to remote device using scp (internal method)
         
         Args:
-            local_path: 本地文件或目录路径
-            remote_path: 远程目标路径
-            recursive: 是否递归复制目录
+            local_path: Local file or directory path
+            remote_path: Remote target path
+            recursive: Whether to recursively copy directories
         """
         scp_command = [
             "scp",
@@ -210,13 +210,13 @@ class RemoteDevice(RemoteDeviceInterface):
     
     def scp_pull(self, remote_path, local_path, recursive=False):
         """
-        [已弃用] 使用 scp 将远程文件或目录复制到本地
-        请使用 pull() 方法替代
+        [Deprecated] Copy remote file or directory to local using scp
+        Please use pull() method instead
         
         Args:
-            remote_path: 远程文件或目录路径
-            local_path: 本地目标路径
-            recursive: 是否递归复制目录
+            remote_path: Remote file or directory path
+            local_path: Local target path
+            recursive: Whether to recursively copy directories
         """
         import warnings
         warnings.warn("scp_pull() is deprecated, use pull() instead", DeprecationWarning, stacklevel=2)
@@ -224,13 +224,13 @@ class RemoteDevice(RemoteDeviceInterface):
 
     def scp_put(self, local_path, remote_path, recursive=False):
         """
-        [已弃用] 使用 scp 将本地文件或目录复制到远程设备
-        请使用 push() 方法替代
+        [Deprecated] Copy local file or directory to remote device using scp
+        Please use push() method instead
         
         Args:
-            local_path: 本地文件或目录路径
-            remote_path: 远程目标路径
-            recursive: 是否递归复制目录
+            local_path: Local file or directory path
+            remote_path: Remote target path
+            recursive: Whether to recursively copy directories
         """
         import warnings
         warnings.warn("scp_put() is deprecated, use push() instead", DeprecationWarning, stacklevel=2)
@@ -238,15 +238,15 @@ class RemoteDevice(RemoteDeviceInterface):
 
     def run_command(self, command: str):
         """
-        在远程设备上执行命令
-        根据设备类型自动选择使用 vm_mgr 或 SSH
+        Execute command on remote device
+        Automatically select vm_mgr or SSH based on device type
         """
         if self.is_vm and self.vm_manager:
-            # 使用 vm_mgr 接口
+            # Use vm_mgr interface
             print(f"run_command (VM): {command}")
             return self.vm_manager.exec_command(self.device_id, command)
         else:
-            # 使用 SSH
+            # Use SSH
             ssh_command = [
                 'ssh',
                 '-o', 'StrictHostKeyChecking=no',
@@ -262,7 +262,7 @@ class RemoteDevice(RemoteDeviceInterface):
                     ssh_command,
                     capture_output=True,
                     text=True,
-                    timeout=300  # 5分钟超时
+                    timeout=300  # 5 minute timeout
                 )
                 return result.stdout, result.stderr
             except subprocess.TimeoutExpired:
@@ -288,7 +288,7 @@ class VMRemoteDevice(RemoteDeviceInterface):
         self.device_id = vm_name
         self.remote_username = "root"
         self.remote_port = 22
-        # 通过单例管理器，但仍校验 backend_type 一致
+        # Via singleton manager, but still validate backend_type consistency
         self.vm_manager = VMManager(backend_type)
 
 
@@ -310,7 +310,7 @@ class VMRemoteDevice(RemoteDeviceInterface):
     def push(self, local_path, remote_path, recursive: bool = False):
         """
         Push file or directory into the VM.
-        优先根据本地类型选择 push_dir / push_file；recursive 参数仅保留向后兼容。
+        Prefer push_dir/push_file based on local type; recursive parameter kept for backward compatibility only.
         """
         if os.path.isdir(local_path):
             success = self.vm_manager.push_dir(self.device_id, local_path, remote_path)
@@ -324,7 +324,7 @@ class VMRemoteDevice(RemoteDeviceInterface):
     def pull(self, remote_path, local_path, recursive: bool = False):
         """
         Pull file or directory from the VM.
-        通过远端类型选择 pull_dir / pull_file；recursive 参数仅保留向后兼容。
+        Select pull_dir/pull_file based on remote type; recursive parameter kept for backward compatibility only.
         """
         if self._remote_is_dir(remote_path):
             success = self.vm_manager.pull_dir(self.device_id, remote_path, local_path)

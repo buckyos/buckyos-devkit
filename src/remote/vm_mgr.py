@@ -1,6 +1,6 @@
 """
-虚拟机管理层抽象
-支持多种后端实现（multipass、docker、kvm等）
+Virtual machine management layer abstraction
+Supports multiple backend implementations (multipass, docker, kvm, etc.)
 """
 from pathlib import Path
 import subprocess
@@ -14,16 +14,16 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(current_dir)
 
 class VMConfig:
-    """虚拟机配置"""
+    """Virtual machine configuration"""
     def __init__(self, node_id: str):
         self.node_id : str = node_id
         self.vm_template : str = None
         self.vm_params : dict = None
         self.network : dict = None
-        #app_name -> app_instance params
+        # app_name -> app_instance params
         self.apps : dict [str,dict]= None
-        self.init_commands : list[str] = None # init_comands会在创建vm后立刻执行
-        self.instance_commands : list[str] = None # instance_commands会在所有的instance创建完成后，按instance_order顺序执行，因此可以在命令行中引用已创建的vm instance的属性
+        self.init_commands : list[str] = None  # init_commands will execute immediately after VM creation
+        self.instance_commands : list[str] = None  # instance_commands execute after all instances are created, in instance_order, so can reference created VM instance properties
 
     def get_dir(self, dir_name: str) -> str:
         return self.directories.get(dir_name, None)
@@ -77,43 +77,43 @@ class VMNodeList:
 
 
 class VMBackend(abc.ABC):
-    """虚拟机后端抽象基类"""
+    """Virtual machine backend abstract base class"""
     
     @abc.abstractmethod
     def create_vm(self, vm_name: str, config: VMConfig) -> bool:
         """
-        创建虚拟机
+        Create a virtual machine
         
         Args:
-            vm_name: 虚拟机名称
-            config: 虚拟机配置（cpu, memory, disk等）
+            vm_name: Virtual machine name
+            config: VM configuration (cpu, memory, disk, etc.)
         
         Returns:
-            bool: 是否创建成功
+            bool: Whether creation was successful
         """
         pass
     
     @abc.abstractmethod
     def delete_vm(self, vm_name: str) -> bool:
         """
-        删除虚拟机
+        Delete a virtual machine
         
         Args:
-            vm_name: 虚拟机名称
+            vm_name: Virtual machine name
         
         Returns:
-            bool: 是否删除成功
+            bool: Whether deletion was successful
         """
         pass
     
     @abc.abstractmethod
     def exec_command(self, vm_name: str, command: str) -> tuple:
         """
-        在虚拟机中执行命令
+        Execute command in virtual machine
         
         Args:
-            vm_name: 虚拟机名称
-            command: 要执行的命令
+            vm_name: Virtual machine name
+            command: Command to execute
         
         Returns:
             tuple: (stdout, stderr)
@@ -123,109 +123,109 @@ class VMBackend(abc.ABC):
     @abc.abstractmethod
     def push_file(self, vm_name: str, local_path: str, remote_path: str, recursive: bool = False) -> bool:
         """
-        将本地文件推送到虚拟机
+        Push local file to virtual machine
         
         Args:
-            vm_name: 虚拟机名称
-            local_path: 本地文件路径
-            remote_path: 远程文件路径
-            recursive: 是否递归复制目录
+            vm_name: Virtual machine name
+            local_path: Local file path
+            remote_path: Remote file path
+            recursive: Whether to recursively copy directories
         
         Returns:
-            bool: 是否成功
+            bool: Whether operation was successful
         """
         pass
     
     @abc.abstractmethod
     def pull_file(self, vm_name: str, remote_path: str, local_path: str, recursive: bool = False) -> bool:
         """
-        从虚拟机拉取文件到本地
+        Pull file from virtual machine to local
         
         Args:
-            vm_name: 虚拟机名称
-            remote_path: 远程文件路径
-            local_path: 本地文件路径
-            recursive: 是否递归复制目录
+            vm_name: Virtual machine name
+            remote_path: Remote file path
+            local_path: Local file path
+            recursive: Whether to recursively copy directories
         
         Returns:
-            bool: 是否成功
+            bool: Whether operation was successful
         """
         pass
 
     @abc.abstractmethod
     def push_dir(self, vm_name: str, local_dir: str, remote_dir: str) -> bool:
         """
-        将本地目录递归推送到虚拟机目录
+        Recursively push local directory to virtual machine directory
         """
         pass
 
     @abc.abstractmethod
     def pull_dir(self, vm_name: str, remote_dir: str, local_dir: str) -> bool:
         """
-        将虚拟机目录递归拉取到本地目录
+        Recursively pull virtual machine directory to local directory
         """
         pass
     
     @abc.abstractmethod
     def get_vm_ip(self, vm_name: str) -> list:
         """
-        获取虚拟机的IP地址
+        Get virtual machine IP address
         
         Args:
-            vm_name: 虚拟机名称
+            vm_name: Virtual machine name
         
         Returns:
-            list: IP地址列表
+            list: IP address list
         """
         pass
     
     @abc.abstractmethod
     def is_vm_exists(self, vm_name: str) -> bool:
         """
-        检查虚拟机是否存在
+        Check if virtual machine exists
         
         Args:
-            vm_name: 虚拟机名称
+            vm_name: Virtual machine name
         
         Returns:
-            bool: 是否存在
+            bool: Whether it exists
         """
         pass
 
     @abc.abstractmethod
     def snapshot(self, node_id: str, snapshot_name: str) -> bool:
-        """创建快照"""
+        """Create snapshot"""
         pass
     
     @abc.abstractmethod
     def restore(self, node_id: str, snapshot_name: str) -> bool:
-        """恢复快照"""
+        """Restore snapshot"""
         pass
 
     @abc.abstractmethod
     def stop_vm(self, node_id: str) -> bool:
-        """停止虚拟机"""
+        """Stop virtual machine"""
         pass
     
     @abc.abstractmethod
     def start_vm(self, node_id: str) -> bool:
-        """启动虚拟机"""
+        """Start virtual machine"""
         pass
 
     @abc.abstractmethod
     def set_template_base_dir(self, template_base_dir: Path) -> bool:
-        """设置模板基础目录"""
+        """Set template base directory"""
         pass
 
 class MultipassVMBackend(VMBackend):
-    """Multipass 虚拟机后端实现"""
+    """Multipass virtual machine backend implementation"""
     
     def __init__(self):
         self.remote_username = "root"
         self.template_base_dir: Path = None
     
     def create_vm(self, vm_name: str, config: VMConfig) -> bool:
-        """使用 multipass 创建虚拟机"""
+        """Create virtual machine using multipass"""
         cpu = config.vm_params.get('cpu', 1)
         memory = config.vm_params.get('memory', '1G')
         disk = config.vm_params.get('disk', '5G')
@@ -233,7 +233,7 @@ class MultipassVMBackend(VMBackend):
         
         cmd = f"multipass launch --name {vm_name} --cpus {cpu} --memory {memory} --disk {disk}"
         
-        # 如果提供了 config_base，添加 cloud-init 配置
+        # Add cloud-init config if config_base is provided
         if template_name:
             init_yaml = os.path.join(self.template_base_dir, f'{template_name}.yaml')
             cmd += f" --cloud-init {init_yaml}"
@@ -260,7 +260,7 @@ class MultipassVMBackend(VMBackend):
             return False
     
     def delete_vm(self, vm_name: str) -> bool:
-        """使用 multipass 删除虚拟机"""
+        """Delete virtual machine using multipass"""
         print(f"delete vm {vm_name} ...")
         try:
             result = subprocess.run(
@@ -270,7 +270,7 @@ class MultipassVMBackend(VMBackend):
                 stderr=subprocess.PIPE,
                 text=True
             )
-            # 执行 purge 以彻底删除
+            # Execute purge to completely delete
             subprocess.run(
                 ["multipass", "purge"],
                 check=True,
@@ -285,7 +285,7 @@ class MultipassVMBackend(VMBackend):
             return False
     
     def exec_command(self, vm_name: str, command: str) -> tuple:
-        """使用 multipass exec 执行命令"""
+        """Execute command using multipass exec"""
         print(f"exec [ {command} ] on vm {vm_name} ...")
         try:
             result = subprocess.run(
@@ -301,7 +301,7 @@ class MultipassVMBackend(VMBackend):
             return None, str(e)
     
     def push_file(self, vm_name: str, local_path: str, remote_path: str, recursive: bool = False) -> bool:
-        """使用 multipass transfer 推送文件"""
+        """Push file using multipass transfer"""
         try:
             print(f"push file {local_path} to {vm_name}:{remote_path} ...")
             cmd = ["multipass", "transfer"]
@@ -322,7 +322,7 @@ class MultipassVMBackend(VMBackend):
             return False
     
     def pull_file(self, vm_name: str, remote_path: str, local_path: str, recursive: bool = False) -> bool:
-        """使用 multipass transfer 拉取文件"""
+        """Pull file using multipass transfer"""
         try:
             print(f"pull file {vm_name}:{remote_path} to {local_path} ...")
             cmd = ["multipass", "transfer"]
@@ -343,7 +343,7 @@ class MultipassVMBackend(VMBackend):
             return False
     
     def get_vm_ip(self, vm_name: str) -> list[str]:
-        """获取虚拟机的IP地址"""
+        """Get virtual machine IP address"""
         try:
             result = subprocess.run(
                 ["multipass", "info", vm_name],
@@ -351,7 +351,7 @@ class MultipassVMBackend(VMBackend):
                 text=True,
                 check=True,
             )
-            # 匹配 IPv4 列表，兼容多行
+            # Match IPv4 list, compatible with multi-line
             ip_pattern = r"IPv4:\s+((?:\d+\.\d+\.\d+\.\d+\s*)+)"
             match = re.search(ip_pattern, result.stdout)
             if match:
@@ -368,7 +368,7 @@ class MultipassVMBackend(VMBackend):
 
     
     def is_vm_exists(self, vm_name: str) -> bool:
-        """检查虚拟机是否存在"""
+        """Check if virtual machine exists"""
         try:
             result = subprocess.run(
                 ["multipass", "list"],
@@ -381,7 +381,7 @@ class MultipassVMBackend(VMBackend):
             return False
 
     def snapshot(self, node_id: str, snapshot_name: str) -> bool:
-        """创建快照"""
+        """Create snapshot"""
         try:
             print(f"create snapshot {snapshot_name} on vm {node_id} ...")
             subprocess.run(
@@ -412,7 +412,7 @@ class MultipassVMBackend(VMBackend):
             return False
     
     def restore(self, node_id: str, snapshot_name: str) -> bool:
-        """恢复快照"""
+        """Restore snapshot"""
         try:
             print(f"restore vm {node_id} to snapshot {snapshot_name} ...")
             subprocess.run(
@@ -423,7 +423,7 @@ class MultipassVMBackend(VMBackend):
                 text=True,
             )
             subprocess.run(
-                # multipass restore 需要 "<instance>.<snapshot>" 作为单一参数
+                # multipass restore requires "<instance>.<snapshot>" as single parameter
                 ["multipass", "restore", f"{node_id}.{snapshot_name}","-d"],
                 check=True,
                 stdout=subprocess.PIPE,
@@ -444,7 +444,7 @@ class MultipassVMBackend(VMBackend):
             return False
     
     def stop_vm(self, node_id: str) -> bool:
-        """停止虚拟机"""
+        """Stop virtual machine"""
         try:
             print(f"stop vm {node_id} ...")
             subprocess.run(
@@ -461,7 +461,7 @@ class MultipassVMBackend(VMBackend):
             return False
     
     def start_vm(self, node_id: str) -> bool:
-        """启动虚拟机"""
+        """Start virtual machine"""
         try:
             print(f"start vm {node_id} ...")
             subprocess.run(
@@ -478,16 +478,16 @@ class MultipassVMBackend(VMBackend):
             return False
 
     def set_template_base_dir(self, template_base_dir: Path) -> bool:
-        """设置模板基础目录"""
+        """Set template base directory"""
         self.template_base_dir = template_base_dir
         return True
     
     def push_dir(self, vm_name: str, local_dir: str, remote_dir: str) -> bool:
-        """递归推送目录（multipass transfer -r）"""
+        """Recursively push directory (multipass transfer -r)"""
         try:
-            # 确保远端目标目录存在
+            # Ensure remote target directory exists
             self.exec_command(vm_name, f"mkdir -p {remote_dir}")
-            # 使用 "<local_dir>/." 只拷贝目录内容，避免远端出现额外的顶层目录
+            # Use "<local_dir>/." to only copy directory contents, avoiding extra top-level directory on remote
             src_dir = os.path.join(local_dir, ".")
             return self.push_file(vm_name, src_dir, remote_dir, recursive=True)
         except Exception as e:
@@ -495,9 +495,9 @@ class MultipassVMBackend(VMBackend):
             return False
 
     def pull_dir(self, vm_name: str, remote_dir: str, local_dir: str) -> bool:
-        """递归拉取目录（multipass transfer -r）"""
+        """Recursively pull directory (multipass transfer -r)"""
         try:
-            # 确保本地目标目录存在
+            # Ensure local target directory exists
             os.makedirs(local_dir, exist_ok=True)
             return self.pull_file(vm_name, remote_dir, local_dir, recursive=True)
         except Exception as e:
@@ -505,7 +505,7 @@ class MultipassVMBackend(VMBackend):
             return False
     
 class VMManager:
-    """虚拟机管理器，根据配置选择后端（单例）"""
+    """Virtual machine manager, selects backend based on configuration (singleton)"""
 
     _instance = None
     _backend_type = None
@@ -517,13 +517,13 @@ class VMManager:
 
     def __init__(self, backend_type: str = "multipass"):
         """
-        初始化虚拟机管理器（单例），后端类型首次创建时确定
+        Initialize VM manager (singleton), backend type determined on first creation
         
         Args:
-            backend_type: 后端类型，目前支持 "multipass"
+            backend_type: Backend type, currently supports "multipass"
         """
         if getattr(self, "_initialized", False):
-            # 后续初始化保持后端一致
+            # Subsequent initializations keep backend consistent
             if backend_type != self._backend_type:
                 raise ValueError(
                     f"VMManager is singleton with backend '{self._backend_type}', "
@@ -541,66 +541,66 @@ class VMManager:
 
     @classmethod
     def get_instance(cls):
-        """获取单例实例"""
+        """Get singleton instance"""
         return cls("multipass")
 
     @classmethod
     def get_backend_type(cls):
-        """获取当前单例后端类型"""
+        """Get current singleton backend type"""
         return cls._backend_type or "multipass"
 
     def set_template_base_dir(self, template_base_dir: Path):
-        """设置模板基础目录"""
+        """Set template base directory"""
         self.backend.set_template_base_dir(template_base_dir)
     
     def snapshot(self, node_id: str, snapshot_name: str) -> bool:
-        """创建快照"""
+        """Create snapshot"""
         return self.backend.snapshot(node_id, snapshot_name)
     
     def restore(self, node_id: str, snapshot_name: str) -> bool:
-        """恢复快照"""
+        """Restore snapshot"""
         return self.backend.restore(node_id, snapshot_name)
     
     def create_vm(self, vm_name: str, config: VMConfig) -> bool:
-        """创建虚拟机"""
+        """Create virtual machine"""
         return self.backend.create_vm(vm_name, config)
     
     def delete_vm(self, vm_name: str) -> bool:
-        """删除虚拟机"""
+        """Delete virtual machine"""
         return self.backend.delete_vm(vm_name)
     def stop_vm(self, node_id: str) -> bool:
-        """停止虚拟机"""
+        """Stop virtual machine"""
         return self.backend.stop_vm(node_id)
     
     def start_vm(self, node_id: str) -> bool:
-        """启动虚拟机"""
+        """Start virtual machine"""
         return self.backend.start_vm(node_id)
     
     def exec_command(self, vm_name: str, command: str) -> tuple:
-        """在虚拟机中执行命令"""
+        """Execute command in virtual machine"""
         return self.backend.exec_command(vm_name, command)
     
     def push_file(self, vm_name: str, local_path: str, remote_path: str, recursive: bool = False) -> bool:
-        """推送文件到虚拟机"""
+        """Push file to virtual machine"""
         return self.backend.push_file(vm_name, local_path, remote_path, recursive)
     
     def pull_file(self, vm_name: str, remote_path: str, local_path: str, recursive: bool = False) -> bool:
-        """从虚拟机拉取文件"""
+        """Pull file from virtual machine"""
         return self.backend.pull_file(vm_name, remote_path, local_path, recursive)
 
     def push_dir(self, vm_name: str, local_dir: str, remote_dir: str) -> bool:
-        """递归推送目录"""
+        """Recursively push directory"""
         return self.backend.push_dir(vm_name, local_dir, remote_dir)
 
     def pull_dir(self, vm_name: str, remote_dir: str, local_dir: str) -> bool:
-        """递归拉取目录"""
+        """Recursively pull directory"""
         return self.backend.pull_dir(vm_name, remote_dir, local_dir)
     
     def get_vm_ip(self, vm_name: str) -> list:
-        """获取虚拟机IP"""
+        """Get virtual machine IP"""
         return self.backend.get_vm_ip(vm_name)
     
     def is_vm_exists(self, vm_name: str) -> bool:
-        """检查虚拟机是否存在"""
+        """Check if virtual machine exists"""
         return self.backend.is_vm_exists(vm_name)
 

@@ -1,0 +1,34 @@
+name: my-buckyos-project
+base_dir: /path/to/your/project
+
+apps:
+  node_active:
+    type: web
+    name: node_active
+    src_dir: kernel/node_active
+    target_dir:
+      - rootfs/apps/node_active
+  
+  admin_panel:
+    type: web
+    name: admin_panel
+    src_dir: apps/admin
+    target_dir:
+      - rootfs/apps/admin
+  
+  core_daemon:
+    type: rust
+    name: core_daemon
+    target_dir:
+      - rootfs/bin
+  
+  cli_tool:
+    type: rust
+    name: cli_tool
+    target_dir:
+      - rootfs/bin/buckycli
+
+rust_target_dir: /tmp/rust_build
+rust_env:
+  RUSTFLAGS: "-C target-feature=+crt-static"
+
