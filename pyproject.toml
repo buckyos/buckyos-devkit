@@ -49,6 +49,7 @@ buckyos-install = "buckyos_devkit.install:install_main"
 buckyos-update = "buckyos_devkit.install:install_main"
 buckyos-remote = "buckyos_devkit.remote.main:main"
 buckyos-devtest = "buckyos_devkit.remote.main:main"
+buckyos-cert = "buckyos_devkit.cert_mgr:main"
 
 [tool.setuptools]
 packages = ["buckyos_devkit", "buckyos_devkit.remote"]
