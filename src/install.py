@@ -6,7 +6,7 @@ import sys
 from typing import Optional
 
 from .buckyos_kit import ensure_executable, get_execute_name
-from .project import AppInfo, BuckyProject
+from .project import AppInfo, BuckyProject, WebModuleInfo
 
 src_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 
@@ -176,7 +176,7 @@ def install_buckyos_apps():
     return
     
 ########################################################
-def update_app(project:BuckyProject,app_name:str,target_rootfs:Optional[Path]=None):
+def update_app(project:BuckyProject,app_name:str,skip_web_module:bool=False,target_rootfs:Optional[Path]=None):
     # copy build modules to rootfs/
     app_info : Optional[AppInfo] = project.apps.get(app_name)
     if app_info is None:
@@ -184,10 +184,19 @@ def update_app(project:BuckyProject,app_name:str,target_rootfs:Optional[Path]=No
 
     if target_rootfs is None:
         target_rootfs = app_info.default_target_rootfs
+    
+    if not os.path.exists(target_rootfs):
+        print(f"⚠️  App {app_name} target rootfs {target_rootfs} not exists, need reinstall...")
+        return reinstall_app(project, app_name, target_rootfs)
 
     print(f"🎯 Updating modules for app {app_name} to {target_rootfs}")
 
     for module_name, module_path in app_info.modules.items():
+        if skip_web_module:
+            module_info  = project.modules.get(module_name)
+            if isinstance(module_info, WebModuleInfo):
+                continue
+
         src_path = Path(project.base_dir) / app_info.rootfs / module_path
         target_path = Path(target_rootfs) / module_path
         
@@ -274,6 +283,11 @@ def reinstall_app(bucky_project:BuckyProject, app_name:str, target_rootfs:Option
 
 
 def install_main():
+    skip_web_module: bool = "--skip-web" in sys.argv
+    target_rootfs: Optional[Path] = None
+    for arg in sys.argv:
+        if arg.startswith("--target-rootfs="):
+            target_rootfs = Path(arg.split("=")[1])
     install_all: bool = "--all" in sys.argv or "reinstall" in sys.argv
     app_name : Optional[str] = None
     for arg in sys.argv:
@@ -293,18 +307,18 @@ def install_main():
         if app_name is None:
             print("Installing all apps ... 🚀")
             for app_name in bucky_project.apps.keys():
-                reinstall_app(bucky_project, app_name)
+                reinstall_app(bucky_project, app_name, target_rootfs)
             return
         else:
-            reinstall_app(bucky_project, app_name)
+            reinstall_app(bucky_project, app_name, target_rootfs)
     else:
         if app_name is None:
             print("Updating all apps ... 🚀")
             for app_name in bucky_project.apps.keys():
-                update_app(bucky_project, app_name)
+                update_app(bucky_project, app_name, skip_web_module, target_rootfs)
             return
         else:
-            update_app(bucky_project, app_name)
+            update_app(bucky_project, app_name, skip_web_module, target_rootfs)
 
 if __name__ == "__main__":
     install_main()
