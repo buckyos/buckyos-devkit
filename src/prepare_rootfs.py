@@ -5,10 +5,11 @@ import platform
 from typing import Optional
 from .project import WebModuleInfo, RustModuleInfo, BuckyProject
 from .buckyos_kit import get_execute_name
+from .build_rust import get_cross_compile_env_vars_by_target
 
 _system_name = platform.system()
 
-def copy_rust_module(project: BuckyProject, module_name:str):
+def copy_rust_module(project: BuckyProject, module_name: str, rust_target: Optional[str] = None):
     module_info: Optional[RustModuleInfo] = project.modules.get(module_name)
     if not module_info:
         raise ValueError(f"Rust module {module_name} not found")
@@ -21,7 +22,20 @@ def copy_rust_module(project: BuckyProject, module_name:str):
         module_path = app_info.modules[module_name]
         
         print(f'* Copying rust module to app {app_info.name}...')
-        src_file = os.path.join(project.base_dir, project.rust_target_dir, "release", module_name)
+        
+        # 构建源文件路径
+        # 当需要交叉编译时（get_cross_compile_env_vars_by_target 返回非 None），
+        # cargo 会使用 --target 参数，编译结果会放在 {target_dir}/{target}/release/
+        # 否则放在 {target_dir}/release/
+        use_target_subdir = False
+        if rust_target:
+            cross_compile_env_vars = get_cross_compile_env_vars_by_target(rust_target)
+            use_target_subdir = cross_compile_env_vars is not None
+        
+        if use_target_subdir:
+            src_file = os.path.join(project.base_dir, project.rust_target_dir, rust_target, "release", module_name)
+        else:
+            src_file = os.path.join(project.base_dir, project.rust_target_dir, "release", module_name)
         src_file = get_execute_name(src_file)
         
         # 目标路径：rootfs/module_path/module_name
@@ -66,11 +80,11 @@ def copy_web_module(project: BuckyProject, module_name: str):
         shutil.copytree(dist_dir, real_target_dir, copy_function=shutil.copyfile)
 
 
-def copy_build_results(project: BuckyProject,skip_web_module:bool):
+def copy_build_results(project: BuckyProject, skip_web_module: bool, rust_target: Optional[str] = None):
     print("🚀 Copying build result ...")
     for module_name, module_info in project.modules.items():
         if isinstance(module_info, RustModuleInfo):
-            copy_rust_module(project, module_name)
+            copy_rust_module(project, module_name, rust_target)
         elif isinstance(module_info, WebModuleInfo):
             if not skip_web_module:
                 copy_web_module(project, module_name)
