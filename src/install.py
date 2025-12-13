@@ -276,8 +276,15 @@ def install_main():
         if arg.startswith("--app="):
             app_name = arg.split("=")[1]
 
-    bucky_project: BuckyProject = BuckyProject.from_file(os.path.join(src_dir, "bucky_project.json"))
+    # Load project configuration
+    config_file : Optional[Path] = BuckyProject.get_project_config_file()
+    if config_file is None:
+        print("Error: No bucky_project.json or bucky_project.yaml configuration file found in current directory")
+        sys.exit(1)
     
+    print(f"Loading project configuration from: {config_file}")
+    bucky_project = BuckyProject.from_file(config_file)
+
     if install_all:
         if app_name is None:
             print("Installing all apps ... 🚀")

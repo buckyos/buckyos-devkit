@@ -280,3 +280,11 @@ class BuckyProject:
             raise ValueError(f"Unsupported config file format: {suffix}, only .json, .yaml, .yml are supported")
         
         print(f"Config saved to: {config_file}")
+    @classmethod
+    def get_project_config_file(cls) -> Optional[Path]:
+        """Get the project configuration file"""
+        for name in ['bucky_project.json', 'bucky_project.yaml', 'bucky_project.yml']:
+            path = Path.cwd() / name
+            if path.exists():
+                return path
+        return None

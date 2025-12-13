@@ -1,5 +1,6 @@
 import sys
 import platform
+from typing import Optional
 
 from .build_web_apps import build_web_modules
 from .build_rust import build_rust_modules
@@ -40,22 +41,17 @@ def build_main():
             target = arg.split("=")[1]
 
     # Load project configuration
-    config_file = None
-    for name in ['bucky_project.json', 'bucky_project.yaml', 'bucky_project.yml']:
-        path = Path.cwd() / name
-        if path.exists():
-            config_file = path
-            break
-    
-    if not config_file:
+    # Load project configuration
+    config_file : Optional[Path] = BuckyProject.get_project_config_file()
+    if config_file is None:
         print("Error: No bucky_project.json or bucky_project.yaml configuration file found in current directory")
         sys.exit(1)
     
     print(f"Loading project configuration from: {config_file}")
-    project = BuckyProject.from_file(config_file)
+    bucky_project = BuckyProject.from_file(config_file)
 
     print(f"Rust target is : {target}")
-    build(project, target, skip_web_module)
+    build(bucky_project, target, skip_web_module)
     
 if __name__ == "__main__":
     build_main()
