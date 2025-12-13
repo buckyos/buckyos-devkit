@@ -45,7 +45,7 @@ Issues = "https://github.com/buckyos/bucky-devkit/issues"
 
 [project.scripts]
 buckyos-build = "buckyos_devkit.build:build_main"
-buckyos-install = "buckyos_devkit.install:main"
+buckyos-install = "buckyos_devkit.install:install_main"
 buckyos-remote = "buckyos_devkit.remote.main:main"
 
 [tool.setuptools]

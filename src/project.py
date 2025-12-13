@@ -94,8 +94,13 @@ class BuckyProject:
     modules: Dict[str, WebModuleInfo | RustModuleInfo] = field(default_factory=dict)
     apps: Dict[str, AppInfo] = field(default_factory=dict)
 
-    rust_target_dir: Path = field(default_factory=lambda: Path(_temp_dir) / "rust_build")
+    rust_target_dir: Optional[Path] = None
     rust_env: Dict[str, str] = field(default_factory=dict)
+    
+    def __post_init__(self):
+        """Initialize fields that depend on other fields"""
+        if self.rust_target_dir is None:
+            self.rust_target_dir = Path(_temp_dir) / "rust_build" / self.name
 
     def add_web_module(self, module: str, info: WebModuleInfo) -> None:
         """Add a web module"""

@@ -69,9 +69,11 @@ def build_web_module(project: BuckyProject, module_name: str):
 
 def build_web_modules(project: BuckyProject):
     """Build all web modules in the project"""
-    print(f'Building web modules ...')
+    print(f'🚀 Building web modules ...')
     for module_name, module_info in project.modules.items():
         if isinstance(module_info, WebModuleInfo):
             build_web_module(project, module_name)
+    
+    print(f'✅ Build web modules completed')
 
 
