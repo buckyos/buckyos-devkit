@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 import shutil
 import platform
 from typing import Optional
@@ -24,9 +25,11 @@ def copy_rust_module(project: BuckyProject, module_name:str):
         src_file = get_execute_name(src_file)
         
         # 目标路径：rootfs/module_path/module_name
-        real_target_dir = os.path.join(project.base_dir, app_info.rootfs, module_path)
-        os.makedirs(real_target_dir, exist_ok=True)
-        real_target = os.path.join(real_target_dir, module_name)
+        real_target = Path(project.base_dir) / app_info.rootfs / module_path / module_name
+        if not module_path.endswith("/"):
+            real_target = os.path.join(project.base_dir, app_info.rootfs, module_path)
+
+        os.makedirs(real_target.parent, exist_ok=True)
         real_target = get_execute_name(real_target)
         
         print(f'+ Copying rust executable: {src_file} => {real_target}')

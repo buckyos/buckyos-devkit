@@ -34,18 +34,21 @@ class WebModuleInfo:
 @dataclass
 class RustModuleInfo:
     name: str
+    file_only: bool = False
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'RustModuleInfo':
         """Create RustModuleInfo from dictionary"""
         return cls(
-            name=data['name']
+            name=data['name'],
+            file_only=data.get('file_only', False)
         )
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary"""
         return {
-            'name': self.name
+            'name': self.name,
+            'file_only': self.file_only
         }
 
 @dataclass

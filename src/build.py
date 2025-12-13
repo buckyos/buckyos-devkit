@@ -31,7 +31,7 @@ def build_main():
         target = "aarch64-apple-darwin"
 
     for arg in sys.argv:
-        if arg == "--no-build-web-modules":
+        if arg == "--skip-web":
             skip_web_module = True
         if arg == "amd64":
             target = "x86_64-unknown-linux-musl"

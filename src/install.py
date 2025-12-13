@@ -191,13 +191,13 @@ def update_app(project:BuckyProject,app_name:str,target_rootfs:Optional[Path]=No
         src_path = Path(project.base_dir) / app_info.rootfs / module_path
         target_path = Path(target_rootfs) / module_path
         
-        if src_path.is_file():
+        if not module_path.endswith("/"):
             # 确保目标目录存在
             target_path.parent.mkdir(parents=True, exist_ok=True)
             print(f"+ Copying file {src_path} => {target_path}")
             shutil.copy(src_path, target_path)
             ensure_executable(str(target_path))
-        elif src_path.is_dir():
+        else:
             # 确保目标父目录存在
             target_path.parent.mkdir(parents=True, exist_ok=True)
             if target_path.exists():
@@ -205,8 +205,7 @@ def update_app(project:BuckyProject,app_name:str,target_rootfs:Optional[Path]=No
                 shutil.rmtree(target_path)
             print(f"+ Copying directory {src_path} => {target_path}")
             shutil.copytree(src_path, target_path)
-        else:
-            print(f"⚠️  Source path not found: {src_path}")
+
     
     print(f"✅ Updating app {app_name} to {target_rootfs} OK")
 
@@ -266,7 +265,7 @@ def reinstall_app(bucky_project:BuckyProject, app_name:str, target_rootfs:Option
     clean_app(bucky_project, app_name, target_rootfs)
     install_app_data(bucky_project, app_name, target_rootfs)
     update_app(bucky_project, app_name, target_rootfs)
-    print(f"✅ Reinstalling app {app_name} to {target_rootfs} OK")
+    print(f"✅ Reinstalling app {app_name} OK")
 
 
 def install_main():
