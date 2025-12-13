@@ -202,7 +202,7 @@ def update_app(project:BuckyProject,app_name:str,skip_web_module:bool=False,targ
         
         if not module_path.endswith("/"):
             # 确保目标目录存在
-            print(f"target_path.parent: {target_path.parent}")
+            #print(f"target_path.parent: {target_path.parent}")
             target_path.parent.mkdir(parents=True, exist_ok=True)
 
             src_path = get_execute_name(src_path)

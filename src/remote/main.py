@@ -121,7 +121,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def build_workspace(group_name: str) -> Workspace:
     """Create and load a workspace instance."""
-    workspace_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dev_configs", group_name)
+    workspace_dir = os.path.join(os.getcwd(), "dev_configs", group_name)
     print(f"{group_name} workspace_dir: {workspace_dir}")
     workspace = Workspace(Path(workspace_dir))
     workspace.load()
