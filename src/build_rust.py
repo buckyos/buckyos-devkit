@@ -117,11 +117,13 @@ def get_cross_compile_env_vars_by_target(target: str) -> Optional[Dict[str, str]
     
     # If OS differs, cross-compilation is complex and may not be supported
     if host_os != target_os:
-        print(f"⚠️ Cross-OS compilation from {host_os} to {target_os} detected.")
-        print(f"   This may require Docker or other specialized tools.")
-        return None
+        if host_os != 'darwin' and target_os != 'linux': # only support cross-OS compilation from darwin to linux
+            print(f"⚠️ Cross-OS compilation from {host_os} to {target_os} detected.")
+            print(f"   This may require Docker or other specialized tools.")
+            return None
     
     # Same OS, different arch - set up cross-compilation toolchain
+    print(f"* Cross-compilation from {host_arch}@{host_os} to {target_arch}@{target_os} detected.")
     env_vars = {}
     
     # Linux cross-compilation configurations
@@ -156,7 +158,7 @@ def get_cross_compile_env_vars_by_target(target: str) -> Optional[Dict[str, str]
                 env_vars["CC_aarch64_unknown_linux_musl"] = "aarch64-linux-musl-gcc"
                 env_vars["CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER"] = "aarch64-linux-musl-gcc"
     
-    return env_vars if env_vars else None
+    return env_vars
 
 def build_rust_modules(project: BuckyProject,rust_target: str):
     print(f"🚀 Building Rust code,target_dir is {project.rust_target_dir},target is {rust_target}")
