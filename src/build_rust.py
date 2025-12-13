@@ -31,16 +31,132 @@ def get_env_vars_by_target(target: str) -> Dict[str, str]:
         env_vars["RUSTFLAGS"] = "-C target-feature=+crt-static"
     return env_vars
 
+def get_host_target() -> str:
+    """Get the Rust target triple for the current host"""
+    machine = platform.machine().lower()
+    system = platform.system().lower()
+    
+    # Normalize architecture names
+    arch_map = {
+        'x86_64': 'x86_64',
+        'amd64': 'x86_64',
+        'aarch64': 'aarch64',
+        'arm64': 'aarch64',
+        'armv7l': 'armv7',
+    }
+    arch = arch_map.get(machine, machine)
+    
+    # Map to Rust target triple
+    if system == 'linux':
+        if arch == 'x86_64':
+            return 'x86_64-unknown-linux-gnu'
+        elif arch == 'aarch64':
+            return 'aarch64-unknown-linux-gnu'
+        elif arch == 'armv7':
+            return 'armv7-unknown-linux-gnueabihf'
+    elif system == 'darwin':
+        if arch == 'x86_64':
+            return 'x86_64-apple-darwin'
+        elif arch == 'aarch64':
+            return 'aarch64-apple-darwin'
+    elif system == 'windows':
+        if arch == 'x86_64':
+            return 'x86_64-pc-windows-msvc'
+        elif arch == 'aarch64':
+            return 'aarch64-pc-windows-msvc'
+    
+    # Fallback: return as-is
+    return f'{arch}-unknown-{system}'
+
+def parse_rust_target(target: str) -> tuple[str, str]:
+    """Parse Rust target triple to extract arch and OS
+    
+    Returns:
+        (arch, os) tuple, e.g., ('aarch64', 'linux'), ('x86_64', 'darwin')
+    """
+    parts = target.split('-')
+    if len(parts) < 3:
+        return ('unknown', 'unknown')
+    
+    arch = parts[0]
+    
+    # Extract OS from target triple
+    if 'linux' in target:
+        os_type = 'linux'
+    elif 'darwin' in target or 'apple' in target:
+        os_type = 'darwin'
+    elif 'windows' in target:
+        os_type = 'windows'
+    else:
+        os_type = parts[2] if len(parts) > 2 else 'unknown'
+    
+    return (arch, os_type)
+
 def get_cross_compile_env_vars_by_target(target: str) -> Optional[Dict[str, str]]:
-    # TODO: properly implement cross-compilation checks
-    env_vars = None
-    if target == "aarch64-unknown-linux-gnu":
-        env_vars = {}
-        env_vars["CC_aarch64_unknown_linux_gnu"] = "aarch64-linux-gnu-gcc"
-        env_vars["CXX_aarch64_unknown_linux_gnu"] = "aarch64-linux-gnu-g++"
-        env_vars["AR_aarch64_unknown_linux_gnu"] = "aarch64-linux-gnu-ar"
-        env_vars["CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER"] = "aarch64-linux-gnu-gcc"
-    return env_vars
+    """Get cross-compilation environment variables for the given Rust target
+    
+    Args:
+        target: Rust target triple (e.g., 'aarch64-unknown-linux-gnu')
+    
+    Returns:
+        Dictionary of environment variables if cross-compilation is needed, None otherwise
+    """
+    host_target = get_host_target()
+    
+    # If target matches host, no cross-compilation needed
+    if target == host_target:
+        return None
+    
+    host_arch, host_os = parse_rust_target(host_target)
+    target_arch, target_os = parse_rust_target(target)
+    
+    # Special case: macOS supports building for both x86_64 and aarch64 natively
+    if host_os == 'darwin' and target_os == 'darwin':
+        # macOS can cross-compile between x86_64 and aarch64 without special tools
+        return None
+    
+    # If OS differs, cross-compilation is complex and may not be supported
+    if host_os != target_os:
+        print(f"⚠️ Cross-OS compilation from {host_os} to {target_os} detected.")
+        print(f"   This may require Docker or other specialized tools.")
+        return None
+    
+    # Same OS, different arch - set up cross-compilation toolchain
+    env_vars = {}
+    
+    # Linux cross-compilation configurations
+    if target_os == 'linux':
+        if target_arch == 'aarch64' and host_arch == 'x86_64':
+            # x86_64 -> aarch64 Linux
+            env_vars["CC_aarch64_unknown_linux_gnu"] = "aarch64-linux-gnu-gcc"
+            env_vars["CXX_aarch64_unknown_linux_gnu"] = "aarch64-linux-gnu-g++"
+            env_vars["AR_aarch64_unknown_linux_gnu"] = "aarch64-linux-gnu-ar"
+            env_vars["CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER"] = "aarch64-linux-gnu-gcc"
+            
+        elif target_arch == 'x86_64' and host_arch == 'aarch64':
+            # aarch64 -> x86_64 Linux
+            env_vars["CC_x86_64_unknown_linux_gnu"] = "x86_64-linux-gnu-gcc"
+            env_vars["CXX_x86_64_unknown_linux_gnu"] = "x86_64-linux-gnu-g++"
+            env_vars["AR_x86_64_unknown_linux_gnu"] = "x86_64-linux-gnu-ar"
+            env_vars["CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER"] = "x86_64-linux-gnu-gcc"
+            
+        elif target_arch == 'armv7':
+            # -> armv7 Linux
+            env_vars["CC_armv7_unknown_linux_gnueabihf"] = "arm-linux-gnueabihf-gcc"
+            env_vars["CXX_armv7_unknown_linux_gnueabihf"] = "arm-linux-gnueabihf-g++"
+            env_vars["AR_armv7_unknown_linux_gnueabihf"] = "arm-linux-gnueabihf-ar"
+            env_vars["CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER"] = "arm-linux-gnueabihf-gcc"
+        
+        # Handle musl targets
+        if 'musl' in target:
+            if target_arch == 'x86_64':
+                env_vars["CC_x86_64_unknown_linux_musl"] = "musl-gcc"
+                env_vars["CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER"] = "musl-gcc"
+            elif target_arch == 'aarch64':
+                env_vars["CC_aarch64_unknown_linux_musl"] = "aarch64-linux-musl-gcc"
+                env_vars["CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER"] = "aarch64-linux-musl-gcc"
+    
+    return env_vars if env_vars else None
 
 def build_rust_modules(project: BuckyProject,rust_target: str):
     print(f"🚀 Building Rust code,target_dir is {project.rust_target_dir},target is {rust_target}")

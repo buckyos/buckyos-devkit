@@ -29,7 +29,7 @@ class Workspace:
         self.workspace_dir: Path = workspace_dir
         self.base_dir: Path = base_dir
         if self.base_dir is None:
-            self.base_dir = Path(current_dir).parent.parent
+            self.base_dir = Path(os.getcwd())
 
         print(f"base_dir: {self.base_dir}")
 
