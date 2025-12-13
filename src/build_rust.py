@@ -42,7 +42,7 @@ def get_cross_compile_env_vars_by_target(target: str) -> Optional[Dict[str, str]
         env_vars["CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER"] = "aarch64-linux-gnu-gcc"
     return env_vars
 
-def build_rust_apps(project: BuckyProject,rust_target: str):
+def build_rust_modules(project: BuckyProject,rust_target: str):
     print(f"🚀 Building Rust code,target_dir is {project.rust_target_dir},target is {rust_target}")
     env = os.environ.copy()
     env.update(project.rust_env)
@@ -66,5 +66,5 @@ def build_rust_apps(project: BuckyProject,rust_target: str):
                     cwd=project.base_dir, 
                     env=env)
 
-    print(f'✅ Build Rust Apps completed')
+    print(f'✅ Build Rust Modules completed')
 

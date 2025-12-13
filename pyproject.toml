@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "buckyos-devkit"
 version = "0.1.0"
-description = "BuckyOS共用的开发脚本基础库，包含构建、安装、远程管理等工具"
+description = "BuckyOS shared development script base library, including build, install, remote management tools"
 readme = "reademe.md"
 requires-python = ">=3.8"
 license = {text = "MIT"}

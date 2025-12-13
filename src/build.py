@@ -1,19 +1,21 @@
 import sys
 import platform
 
-from .build_web_apps import build_web_apps
-from .build_rust import build_rust_apps
+from .build_web_apps import build_web_modules
+from .build_rust import build_rust_modules
 from .project import BuckyProject
 from .prepare_rootfs import copy_build_results
 
-def build(project: BuckyProject,rust_target:str,skip_web_app:bool):
-    if not skip_web_app:
-        build_web_apps(project)
-    build_rust_apps(project, rust_target)
-    copy_build_results(project, skip_web_app)
+def build(project: BuckyProject,rust_target:str,skip_web_module:bool):
+    if not skip_web_module:
+        build_web_modules(project)
+    build_rust_modules(project, rust_target)
+    copy_build_results(project, skip_web_module)
 
 def build_main():
-    skip_web_app = False
+    from pathlib import Path
+    
+    skip_web_module = False
     system = platform.system() # Linux / Windows / Darwin
     arch = platform.machine() # x86_64 / AMD64 / arm64 / arm
     print(f"DEBUG: system:{system},arch:{arch}")
@@ -28,8 +30,8 @@ def build_main():
         target = "aarch64-apple-darwin"
 
     for arg in sys.argv:
-        if arg == "--no-build-web-apps":
-            skip_web_app = True
+        if arg == "--no-build-web-modules":
+            skip_web_module = True
         if arg == "amd64":
             target = "x86_64-unknown-linux-musl"
         if arg == "aarch64":
@@ -37,8 +39,23 @@ def build_main():
         if arg.startswith("--target="):
             target = arg.split("=")[1]
 
+    # Load project configuration
+    config_file = None
+    for name in ['bucky_project.json', 'bucky_project.yaml', 'bucky_project.yml']:
+        path = Path.cwd() / name
+        if path.exists():
+            config_file = path
+            break
+    
+    if not config_file:
+        print("Error: No bucky_project.json or bucky_project.yaml configuration file found in current directory")
+        sys.exit(1)
+    
+    print(f"Loading project configuration from: {config_file}")
+    project = BuckyProject.from_file(config_file)
+
     print(f"Rust target is : {target}")
-    build(project, target, skip_web_app)
+    build(project, target, skip_web_module)
     
 if __name__ == "__main__":
     build_main()

@@ -42,8 +42,8 @@ buckyos-build
 buckyos-build --help
 
 # 常用选项
-buckyos-build --no-build-web-apps  # 跳过 web apps 构建
-buckyos-build --no-install         # 不安装
+buckyos-build --no-build-web-modules  # 跳过 web modules 构建
+buckyos-build --no-install            # 不安装
 buckyos-build --target=x86_64-unknown-linux-musl  # 指定目标
 ```
 

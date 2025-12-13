@@ -1,20 +1,20 @@
 name: my-buckyos-project
 base_dir: /path/to/your/project
 
-apps:
+modules:
   node_active:
     type: web
     name: node_active
     src_dir: kernel/node_active
     target_dir:
-      - rootfs/apps/node_active
+      - rootfs/modules/node_active
   
   admin_panel:
     type: web
     name: admin_panel
-    src_dir: apps/admin
+    src_dir: modules/admin
     target_dir:
-      - rootfs/apps/admin
+      - rootfs/modules/admin
   
   core_daemon:
     type: rust

@@ -2,7 +2,7 @@ import os
 import subprocess
 import json
 from typing import List
-from .project import BuckyProject, WebAppInfo
+from .project import BuckyProject, WebModuleInfo
 
 src_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 
@@ -37,17 +37,17 @@ def get_github_dependencies(package_json_path: str) -> List[str]:
         return []
 
 
-def build_web_app(project: BuckyProject, app_name: str):
-    """Build a web application
+def build_web_module(project: BuckyProject, module_name: str):
+    """Build a web module
     
     Automatically detects and updates GitHub dependencies while keeping other dependencies stable.
     """
-    app_info = project.apps[app_name]
-    if not app_info:
-        raise ValueError(f"Web app {app_name} not found")
+    module_info = project.modules[module_name]
+    if not module_info:
+        raise ValueError(f"Web module {module_name} not found")
 
-    print(f'* Building web app {app_name} at {app_info.src_dir} ...')
-    work_dir = os.path.join(project.base_dir, app_info.src_dir)
+    print(f'* Building web module {module_name} at {module_info.src_dir} ...')
+    work_dir = os.path.join(project.base_dir, module_info.src_dir)
     package_json = os.path.join(work_dir, 'package.json')
     
     # Detect GitHub dependencies
@@ -63,15 +63,15 @@ def build_web_app(project: BuckyProject, app_name: str):
     
     cmd += ' && pnpm run build'
     
-    print(f'* Build web app {app_name}:\n**\t{cmd} ')
+    print(f'* Build web module {module_name}:\n**\t{cmd} ')
     subprocess.run(cmd, shell=True, cwd=work_dir, check=True)
-    print(f'Build web app {app_name} completed')
+    print(f'Build web module {module_name} completed')
 
-def build_web_apps(project: BuckyProject):
-    """Build all web applications in the project"""
-    print(f'Building web apps ...')
-    for app_name, app_info in project.apps.items():
-        if isinstance(app_info, WebAppInfo):
-            build_web_app(project, app_name)
+def build_web_modules(project: BuckyProject):
+    """Build all web modules in the project"""
+    print(f'Building web modules ...')
+    for module_name, module_info in project.modules.items():
+        if isinstance(module_info, WebModuleInfo):
+            build_web_module(project, module_name)
 
 

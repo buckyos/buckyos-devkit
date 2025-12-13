@@ -10,6 +10,16 @@ def get_execute_name(file_name: str) -> str:
         return file_name + ".exe"
     return file_name
 
+def ensure_executable(file_path: str):
+    if _system_name == "Windows":
+        return
+        
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(f"File {file_path} not found")
+    if not os.path.isfile(file_path):
+        raise ValueError(f"File {file_path} is not a file")
+    os.system(f"chmod +x {file_path}")
+
 def ensure_directory_accessible(directory_path):
     if not os.path.exists(directory_path):
         os.makedirs(directory_path, exist_ok=True)

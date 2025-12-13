@@ -12,69 +12,53 @@ else:
     _temp_dir = "/tmp/"
 
 @dataclass
-class WebAppInfo:
+class WebModuleInfo:
     name: str
     src_dir: Path 
-    target_dir: List[Path]
-    
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'WebAppInfo':
-        """Create WebAppInfo from dictionary"""
-        return cls(
-            name=data['name'],
-            src_dir=Path(data['src_dir']),
-            target_dir=[Path(p) for p in data.get('target_dir', [])]
-        )
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary"""
-        return {
-            'name': self.name,
-            'src_dir': str(self.src_dir),
-            'target_dir': [str(p) for p in self.target_dir]
-        }
 
 @dataclass
-class RustAppInfo:
+class RustModuleInfo:
     name: str
-    target_dir: List[Path]
+    
+
+@dataclass
+class AppInfo:
+    name: str
+    rootfs: Path # 相对Project的base_dir的相对路径
+    default_target_rootfs: Path
+    
+    # 模块名 => 模块的安装路径
+    modules: Dict[str, Path] = field(default_factory=dict)
+    data_paths: List[Path] = field(default_factory=list)
+    clean_paths: List[Path] = field(default_factory=list)
+
     
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'RustAppInfo':
-        """Create RustAppInfo from dictionary"""
-        return cls(
-            name=data['name'],
-            target_dir=[Path(p) for p in data.get('target_dir', [])]
-        )
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary"""
-        return {
-            'name': self.name,
-            'target_dir': [str(p) for p in self.target_dir]
-        }
+    def from_dict(cls, data: Dict[str, Any]) -> 'AppInfo':
+        """Create AppInfo from dictionary"""
 
 @dataclass
 class BuckyProject:
     """BuckyOS project configuration"""
     name: str
     base_dir: Path = field(default_factory=Path.cwd)
-    apps: Dict[str, WebAppInfo | RustAppInfo] = field(default_factory=dict)
-    
+    modules: Dict[str, WebModuleInfo | RustModuleInfo] = field(default_factory=dict)
+    apps: Dict[str, AppInfo] = field(default_factory=dict)
+
     rust_target_dir: Path = field(default_factory=lambda: Path(_temp_dir) / "rust_build")
     rust_env: Dict[str, str] = field(default_factory=dict)
 
-    def add_web_app(self, app: str, info: WebAppInfo) -> None:
-        """Add a web application"""
-        if app in self.apps:
-            raise ValueError(f"Web app {app} already exists")
-        self.apps[app] = info
+    def add_web_module(self, module: str, info: WebModuleInfo) -> None:
+        """Add a web module"""
+        if module in self.modules:
+            raise ValueError(f"Web module {module} already exists")
+        self.modules[module] = info
     
-    def add_rust_app(self, app: str, info: RustAppInfo) -> None:
-        """Add a Rust application"""
-        if app in self.apps:
-            raise ValueError(f"Rust app {app} already exists")
-        self.apps[app] = info
+    def add_rust_module(self, module: str, info: RustModuleInfo) -> None:
+        """Add a Rust module"""
+        if module in self.modules:
+            raise ValueError(f"Rust module {module} already exists")
+        self.modules[module] = info
     
     @classmethod
     def from_file(cls, config_file: str | Path) -> 'BuckyProject':
@@ -99,12 +83,12 @@ class BuckyProject:
         {
             "name": "my-project",
             "base_dir": "/path/to/project",
-            "apps": {
+            "modules": {
                 "frontend": {
                     "type": "web",
                     "name": "frontend",
                     "src_dir": "web/frontend",
-                    "target_dir": ["rootfs/apps/frontend"]
+                    "target_dir": ["rootfs/modules/frontend"]
                 },
                 "backend": {
                     "type": "rust",
@@ -156,22 +140,22 @@ class BuckyProject:
         elif base_dir is None:
             base_dir = Path.cwd()
         
-        # Parse apps
-        apps: Dict[str, WebAppInfo | RustAppInfo] = {}
-        for app_name, app_data in data.get('apps', {}).items():
-            app_type = app_data.get('type', 'web')
-            if app_type == 'web':
-                apps[app_name] = WebAppInfo.from_dict(app_data)
-            elif app_type == 'rust':
-                apps[app_name] = RustAppInfo.from_dict(app_data)
+        # Parse modules
+        modules: Dict[str, WebModuleInfo | RustModuleInfo] = {}
+        for module_name, module_data in data.get('modules', {}).items():
+            module_type = module_data.get('type', 'web')
+            if module_type == 'web':
+                modules[module_name] = WebModuleInfo.from_dict(module_data)
+            elif module_type == 'rust':
+                modules[module_name] = RustModuleInfo.from_dict(module_data)
             else:
-                raise ValueError(f"Unknown application type: {app_type}")
+                raise ValueError(f"Unknown module type: {module_type}")
         
         # Create project
         project = cls(
             name=data['name'],
             base_dir=base_dir,
-            apps=apps,
+            modules=modules,
             rust_env=data.get('rust_env', {})
         )
         
@@ -183,19 +167,19 @@ class BuckyProject:
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary"""
-        apps_dict = {}
-        for app_name, app_info in self.apps.items():
-            app_dict = app_info.to_dict()
-            if isinstance(app_info, WebAppInfo):
-                app_dict['type'] = 'web'
-            elif isinstance(app_info, RustAppInfo):
-                app_dict['type'] = 'rust'
-            apps_dict[app_name] = app_dict
+        modules_dict = {}
+        for module_name, module_info in self.modules.items():
+            module_dict = module_info.to_dict()
+            if isinstance(module_info, WebModuleInfo):
+                module_dict['type'] = 'web'
+            elif isinstance(module_info, RustModuleInfo):
+                module_dict['type'] = 'rust'
+            modules_dict[module_name] = module_dict
         
         return {
             'name': self.name,
             'base_dir': str(self.base_dir),
-            'apps': apps_dict,
+            'modules': modules_dict,
             'rust_target_dir': str(self.rust_target_dir),
             'rust_env': self.rust_env
         }

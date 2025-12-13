@@ -32,8 +32,8 @@ pip install -e ".[dev]"
 # 基本构建
 buckyos-build
 
-# 不构建 web apps
-buckyos-build --no-build-web-apps
+# 不构建 web modules
+buckyos-build --no-build-web-modules
 
 # 不安装
 buckyos-build --no-install

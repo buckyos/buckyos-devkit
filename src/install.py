@@ -1,6 +1,13 @@
 import os
+from pathlib import Path
 import shutil
 import platform
+import sys
+from typing import Optional
+
+from src.buckyos_kit import ensure_executable
+
+from .project import AppInfo, BuckyProject
 
 src_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 
@@ -120,7 +127,7 @@ def download_file(url, filepath):
 #         #    shutil.copytree(config_path, os.path.join(etc_dir, config_file))
 #         #    print(f"Copied directory {config_path} to {etc_dir}")
 
-def install_apps():
+def install_buckyos_apps():
     temp_dir = os.environ.get('TEMP') or os.environ.get('TMP') or '/tmp'
     download_dir = os.path.join(temp_dir, "buckyos-apps")
     version = os.path.join(src_dir, "VERSION")
@@ -168,59 +175,125 @@ def install_apps():
         print(f"install {app['app_id']} OK")
 
     return
-
-def install(install_all=False):
-    if install_root_dir == "":
-        print("Unknown platform, installation not supported, skipping.")
-        return
-    # if /opt/buckyos doesn't exist, copy rootfs to /opt/buckyos
-    print(f"Installing to {install_root_dir}")
-    etc_dir = os.path.join(install_root_dir, "etc")
-    if not os.path.exists(etc_dir):
-        install_all = True
     
-    if install_all:
-        print(f'Copying rootfs to {install_root_dir}')
-        
-        if os.path.exists(install_root_dir):
-            # Remove all items in target directory
-            for item in os.listdir(install_root_dir):
-                item_path = os.path.join(install_root_dir, item)
-                print(f'Removing {item_path}')
-                if os.path.isfile(item_path):
-                    os.remove(item_path)
-                elif os.path.isdir(item_path):
-                    shutil.rmtree(item_path)
-            # Copy all sub_items from rootfs
-            for item in os.listdir(os.path.join(src_dir, "rootfs")):
-                item_path = os.path.join(src_dir, "rootfs", item)
-                print(f'Copying {item_path} to {install_root_dir}')
-                if os.path.isfile(item_path):
-                    shutil.copy(item_path, install_root_dir)
-                elif os.path.isdir(item_path):
-                    shutil.copytree(item_path, os.path.join(install_root_dir, item))
-        else:
-            shutil.copytree(os.path.join(src_dir, "rootfs"), install_root_dir)
-    else:
-        bin_dir = os.path.join(install_root_dir, "bin")
+########################################################
+def update_app(project:BuckyProject,app_name:str,target_rootfs:Optional[Path]=None):
+    # copy build modules to rootfs/
+    app_info : Optional[AppInfo] = project.apps.get(app_name)
+    if app_info is None:
+        raise ValueError(f"App {app_name} not found")
 
-        print(f'Updating files in {bin_dir}')
-        if os.path.exists(bin_dir):
-            print(f'Removing {bin_dir}')
-            shutil.rmtree(bin_dir)
-        # Just update bin
-        print(f'Copying {os.path.join(src_dir, "rootfs","bin")} => {bin_dir}')
-        shutil.copytree(os.path.join(src_dir, "rootfs","bin"), bin_dir)
+    if target_rootfs is None:
+        target_rootfs = app_info.default_target_rootfs
 
-    # Set data directory permissions after installation
-    set_data_dir_permissions()
+    print(f"🎯 Updating modules for app {app_name} to {target_rootfs}")
+
+    for module_name, module_path in app_info.modules.items():
+        src_path = os.path.join(project.base_dir,app_info.rootfs, module_path)
+        target_path = os.path.join(project.base_dir, target_rootfs, module_path)
+        if src_path.is_file():
+            print(f"+ Copying {src_path} => {target_path}")
+            shutil.copy(src_path, target_path)
+            ensure_executable(target_path)
+        elif src_path.is_dir():
+            if os.path.exists(target_path):
+                print(f"- Removing {target_path}")
+                shutil.rmtree(target_path)
+            print(f"+ Copying Directory {src_path} => {target_path}")
+            shutil.copytree(src_path, target_path)
+    
+    print(f"✅ Updating app {app_name} to {target_rootfs} OK")
+
+def clean_app(project:BuckyProject,app_name:str,target_rootfs:Optional[Path]=None):
+    app_info : Optional[AppInfo] = project.apps.get(app_name)
+    if app_info is None:
+        raise ValueError(f"App {app_name} not found")
+
+    if target_rootfs is None:
+        target_rootfs = app_info.default_target_rootfs
+
+    print(f"🧹 Cleaning app {app_name} from {target_rootfs}")
+    for clean_path in app_info.clean_paths:
+        real_path = os.path.join(project.base_dir, target_rootfs, clean_path)
+        if os.path.exists(real_path):
+            print(f"- Removing {real_path}")
+            if os.path.isfile(real_path):
+                os.remove(real_path)
+            elif os.path.isdir(real_path):
+                shutil.rmtree(real_path)
+
+
+def install_app_data(project:BuckyProject,app_name:str,target_rootfs:Optional[Path]=None):
+    app_info : AppInfo = project.apps[app_name]
+    if app_info is None:
+        raise ValueError(f"App {app_name} not found")
+
+    if target_rootfs is None:
+        target_rootfs = app_info.default_target_rootfs
+
+    print(f"📋 Installing data for app {app_name} to {target_rootfs}")
+
+    for data_path in app_info.data_paths:
+        src_path = os.path.join(project.base_dir,app_info.rootfs, data_path)
+        target_path = os.path.join(project.base_dir, target_rootfs, data_path)
+        if src_path.is_file():
+            if not os.path.exists(target_path.parent):
+                print(f"+ Creating directory {target_path.parent}")
+                os.makedirs(target_path.parent, exist_ok=True)
+            print(f"+ Copying {src_path} => {target_path}")
+            shutil.copy(src_path, target_path)
+        elif src_path.is_dir():
+            if os.path.exists(target_path):
+                print(f"- Removing {target_path}")
+                shutil.rmtree(target_path)
+            if not os.path.exists(target_path.parent):
+                print(f"+ Creating directory {target_path.parent}")
+                os.makedirs(target_path.parent, exist_ok=True)
+            print(f"+ Copying Directory {src_path} => {target_path}")
+            shutil.copytree(src_path, target_path)
+
+
+def reinstall_app(bucky_project:BuckyProject, app_name:str, target_rootfs:Optional[Path]=None):
+    print(f"🔄 Reinstalling app {app_name} to {target_rootfs} ... ")
+    clean_app(bucky_project, app_name, target_rootfs)
+    install_app_data(bucky_project, app_name, target_rootfs)
+    update_app(bucky_project, app_name, target_rootfs)
+    print(f"✅ Reinstalling app {app_name} to {target_rootfs} OK")
+
 
 def install_main():
-    import sys
-    install_all = "--all" in sys.argv
-    print(f"Installing to {install_root_dir}, install_all: {install_all}")
-    install(install_all)
-    install_apps()
+    just_update: bool = True
+    install_all: bool = "--all" in sys.argv or "reinstall" in sys.argv
+    if install_all and just_update:
+        print("`reinstall` and `update` cannot be true at the same time")
+        exit(1)
+
+    if install_all:
+        just_update = False
+
+    app_name : Optional[str] = None
+    for arg in sys.argv:
+        if arg.startswith("--app="):
+            app_name = arg.split("=")[1]
+
+    bucky_project: BuckyProject = BuckyProject.from_file(os.path.join(src_dir, "bucky_project.json"))
+    
+    if install_all:
+        if app_name is None:
+            print("Installing all apps ... 🚀")
+            for app_name in bucky_project.apps.keys():
+                reinstall_app(bucky_project, app_name)
+            return
+        else:
+            reinstall_app(bucky_project, app_name)
+    else:
+        if app_name is None:
+            print("Updating all apps ... 🚀")
+            for app_name in bucky_project.apps.keys():
+                update_app(bucky_project, app_name)
+            return
+        else:
+            update_app(bucky_project, app_name)
 
 if __name__ == "__main__":
     install_main()

@@ -16,11 +16,11 @@ project = BuckyProject.from_file('buckyos.json')
 
 # 使用加载的配置
 print(f"项目名称: {project.name}")
-print(f"应用数量: {len(project.apps)}")
+print(f"模块数量: {len(project.modules)}")
 
 # 构建项目
-from buckyos_devkit.build_web_apps import build_web_apps
-build_web_apps(project)
+from buckyos_devkit.build_web_apps import build_web_modules
+build_web_modules(project)
 ```
 
 ### 方式 2: 从 YAML 文件加载
@@ -34,7 +34,7 @@ project = BuckyProject.from_file('buckyos.yaml')
 
 ```python
 from pathlib import Path
-from buckyos_devkit.project import BuckyProject, WebAppInfo, RustAppInfo
+from buckyos_devkit.project import BuckyProject, WebModuleInfo, RustModuleInfo
 
 # 在代码中创建项目
 project = BuckyProject(
@@ -42,14 +42,14 @@ project = BuckyProject(
     base_dir=Path('/path/to/project')
 )
 
-# 添加应用
-project.add_web_app('frontend', WebAppInfo(
+# 添加模块
+project.add_web_module('frontend', WebModuleInfo(
     name='frontend',
     src_dir=Path('web/frontend'),
-    target_dir=[Path('rootfs/apps/frontend')]
+    target_dir=[Path('rootfs/modules/frontend')]
 ))
 
-project.add_rust_app('daemon', RustAppInfo(
+project.add_rust_module('daemon', RustModuleInfo(
     name='daemon',
     target_dir=[Path('rootfs/bin')]
 ))
@@ -66,18 +66,18 @@ project.save('buckyos.json')  # 或 'buckyos.yaml'
 {
   "name": "my-buckyos-project",
   "base_dir": "/path/to/your/project",
-  "apps": {
+  "modules": {
     "node_active": {
       "type": "web",
       "name": "node_active",
       "src_dir": "kernel/node_active",
-      "target_dir": ["rootfs/apps/node_active"]
+      "target_dir": ["rootfs/modules/node_active"]
     },
     "admin_panel": {
       "type": "web",
       "name": "admin_panel",
-      "src_dir": "apps/admin",
-      "target_dir": ["rootfs/apps/admin"]
+      "src_dir": "modules/admin",
+      "target_dir": ["rootfs/modules/admin"]
     },
     "core_daemon": {
       "type": "rust",
@@ -97,20 +97,20 @@ project.save('buckyos.json')  # 或 'buckyos.yaml'
 name: my-buckyos-project
 base_dir: /path/to/your/project
 
-apps:
+modules:
   node_active:
     type: web
     name: node_active
     src_dir: kernel/node_active
     target_dir:
-      - rootfs/apps/node_active
+      - rootfs/modules/node_active
   
   admin_panel:
     type: web
     name: admin_panel
-    src_dir: apps/admin
+    src_dir: modules/admin
     target_dir:
-      - rootfs/apps/admin
+      - rootfs/modules/admin
   
   core_daemon:
     type: rust
@@ -130,25 +130,25 @@ rust_env:
 |------|------|------|------|
 | `name` | string | ✅ | 项目名称 |
 | `base_dir` | string | ❌ | 项目根目录（默认为当前目录） |
-| `apps` | object | ❌ | 应用列表 |
+| `modules` | object | ❌ | 模块列表 |
 | `rust_target_dir` | string | ❌ | Rust 构建输出目录 |
 | `rust_env` | object | ❌ | Rust 编译环境变量 |
 
-### Web 应用字段
+### Web 模块字段
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | `type` | string | ✅ | 固定为 "web" |
-| `name` | string | ✅ | 应用名称 |
+| `name` | string | ✅ | 模块名称 |
 | `src_dir` | string | ✅ | 源代码目录（相对于 base_dir） |
 | `target_dir` | array | ❌ | 构建产物输出目录列表 |
 
-### Rust 应用字段
+### Rust 模块字段
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | `type` | string | ✅ | 固定为 "rust" |
-| `name` | string | ✅ | 应用名称 |
+| `name` | string | ✅ | 模块名称 |
 | `target_dir` | array | ❌ | 编译产物输出目录列表 |
 
 ## 💡 使用场景
@@ -162,10 +162,10 @@ rust_env:
 # 从配置文件加载项目并构建
 python3 << EOF
 from buckyos_devkit.project import BuckyProject
-from buckyos_devkit.build_web_apps import build_web_apps
+from buckyos_devkit.build_web_apps import build_web_modules
 
 project = BuckyProject.from_file('buckyos.json')
-build_web_apps(project)
+build_web_modules(project)
 EOF
 ```
 
@@ -189,7 +189,7 @@ project = BuckyProject.from_file(f'buckyos.{env}.json')
 ```python
 # 团队成员 A 创建配置
 project = BuckyProject(name='shared-project')
-# ... 添加应用 ...
+# ... 添加模块 ...
 project.save('buckyos.json')
 
 # 提交到 Git
@@ -214,11 +214,11 @@ base_project = BuckyProject.from_file('buckyos.base.json')
 env_config = BuckyProject.from_file('buckyos.dev.json')
 
 # 合并配置（手动合并示例）
-for app_name, app_info in env_config.apps.items():
-    base_project.apps[app_name] = app_info
+for module_name, module_info in env_config.modules.items():
+    base_project.modules[module_name] = module_info
 
 # 使用合并后的配置
-build_web_apps(base_project)
+build_web_modules(base_project)
 ```
 
 ### 动态修改配置
@@ -249,8 +249,8 @@ project.save('buckyos.local.json')
 """
 from pathlib import Path
 from buckyos_devkit.project import BuckyProject
-from buckyos_devkit.build_web_apps import build_web_apps
-from buckyos_devkit.build_rust import build_rust_apps
+from buckyos_devkit.build_web_apps import build_web_modules
+from buckyos_devkit.build_rust import build_rust_modules
 
 def main():
     # 从配置文件加载项目
@@ -266,13 +266,13 @@ def main():
     
     print(f"🚀 开始构建项目: {project.name}")
     print(f"   基础目录: {project.base_dir}")
-    print(f"   应用数量: {len(project.apps)}")
+    print(f"   模块数量: {len(project.modules)}")
     
-    # 构建 Web 应用
-    build_web_apps(project)
+    # 构建 Web 模块
+    build_web_modules(project)
     
-    # 构建 Rust 应用
-    # build_rust_apps(project)
+    # 构建 Rust 模块
+    # build_rust_modules(project)
     
     print("✅ 构建完成！")
     return 0
