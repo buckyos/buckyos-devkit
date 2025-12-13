@@ -1,0 +1,4 @@
+#!/bin/bash
+# Mock Rust executable: test_daemon
+echo "Running test_daemon (mock version)"
+echo "Version: 1.0.0-test"

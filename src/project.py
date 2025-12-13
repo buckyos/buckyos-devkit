@@ -15,11 +15,38 @@ else:
 class WebModuleInfo:
     name: str
     src_dir: Path 
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'WebModuleInfo':
+        """Create WebModuleInfo from dictionary"""
+        return cls(
+            name=data['name'],
+            src_dir=Path(data['src_dir'])
+        )
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary"""
+        return {
+            'name': self.name,
+            'src_dir': str(self.src_dir)
+        }
 
 @dataclass
 class RustModuleInfo:
     name: str
     
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'RustModuleInfo':
+        """Create RustModuleInfo from dictionary"""
+        return cls(
+            name=data['name']
+        )
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary"""
+        return {
+            'name': self.name
+        }
 
 @dataclass
 class AppInfo:
@@ -31,11 +58,33 @@ class AppInfo:
     modules: Dict[str, Path] = field(default_factory=dict)
     data_paths: List[Path] = field(default_factory=list)
     clean_paths: List[Path] = field(default_factory=list)
-
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'AppInfo':
         """Create AppInfo from dictionary"""
+        modules = {}
+        for mod_name, mod_path in data.get('modules', {}).items():
+            modules[mod_name] = Path(mod_path)
+        
+        return cls(
+            name=data['name'],
+            rootfs=Path(data['rootfs']),
+            default_target_rootfs=Path(data['default_target_rootfs']),
+            modules=modules,
+            data_paths=[Path(p) for p in data.get('data_paths', [])],
+            clean_paths=[Path(p) for p in data.get('clean_paths', [])]
+        )
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary"""
+        return {
+            'name': self.name,
+            'rootfs': str(self.rootfs),
+            'default_target_rootfs': str(self.default_target_rootfs),
+            'modules': {k: str(v) for k, v in self.modules.items()},
+            'data_paths': [str(p) for p in self.data_paths],
+            'clean_paths': [str(p) for p in self.clean_paths]
+        }
 
 @dataclass
 class BuckyProject:
@@ -151,11 +200,17 @@ class BuckyProject:
             else:
                 raise ValueError(f"Unknown module type: {module_type}")
         
+        # Parse apps
+        apps: Dict[str, AppInfo] = {}
+        for app_name, app_data in data.get('apps', {}).items():
+            apps[app_name] = AppInfo.from_dict(app_data)
+        
         # Create project
         project = cls(
             name=data['name'],
             base_dir=base_dir,
             modules=modules,
+            apps=apps,
             rust_env=data.get('rust_env', {})
         )
         
@@ -176,10 +231,15 @@ class BuckyProject:
                 module_dict['type'] = 'rust'
             modules_dict[module_name] = module_dict
         
+        apps_dict = {}
+        for app_name, app_info in self.apps.items():
+            apps_dict[app_name] = app_info.to_dict()
+        
         return {
             'name': self.name,
             'base_dir': str(self.base_dir),
             'modules': modules_dict,
+            'apps': apps_dict,
             'rust_target_dir': str(self.rust_target_dir),
             'rust_env': self.rust_env
         }

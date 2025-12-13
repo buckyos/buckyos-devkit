@@ -1,0 +1,33 @@
+{
+  "name": "test-project",
+  "base_dir": ".",
+  "modules": {
+    "web_frontend": {
+      "type": "web",
+      "name": "web_frontend",
+      "src_dir": "web/frontend"
+    },
+    "test_daemon": {
+      "type": "rust",
+      "name": "test_daemon"
+    }
+  },
+  "apps": {
+    "demo_app": {
+      "name": "demo_app",
+      "rootfs": "rootfs/demo_app",
+      "default_target_rootfs": "/opt/buckyos/demo_app",
+      "modules": {
+        "web_frontend": "www",
+        "test_daemon": "bin/daemon"
+      },
+      "data_paths": ["data", "logs"],
+      "clean_paths": ["temp"]
+    }
+  },
+  "rust_target_dir": "target",
+  "rust_env": {
+    "RUSTFLAGS": "-C target-feature=+crt-static"
+  }
+}
+

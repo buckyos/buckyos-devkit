@@ -205,3 +205,5 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+test_project/rootfs/demo_app/bin/daemon/test_daemon
+test_project/bucky_project_test_output.json

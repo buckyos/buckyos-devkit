@@ -5,8 +5,7 @@ import platform
 import sys
 from typing import Optional
 
-from src.buckyos_kit import ensure_executable
-
+from .buckyos_kit import ensure_executable
 from .project import AppInfo, BuckyProject
 
 src_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
@@ -189,18 +188,25 @@ def update_app(project:BuckyProject,app_name:str,target_rootfs:Optional[Path]=No
     print(f"🎯 Updating modules for app {app_name} to {target_rootfs}")
 
     for module_name, module_path in app_info.modules.items():
-        src_path = os.path.join(project.base_dir,app_info.rootfs, module_path)
-        target_path = os.path.join(project.base_dir, target_rootfs, module_path)
+        src_path = Path(project.base_dir) / app_info.rootfs / module_path
+        target_path = Path(target_rootfs) / module_path
+        
         if src_path.is_file():
-            print(f"+ Copying {src_path} => {target_path}")
+            # 确保目标目录存在
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            print(f"+ Copying file {src_path} => {target_path}")
             shutil.copy(src_path, target_path)
-            ensure_executable(target_path)
+            ensure_executable(str(target_path))
         elif src_path.is_dir():
-            if os.path.exists(target_path):
+            # 确保目标父目录存在
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            if target_path.exists():
                 print(f"- Removing {target_path}")
                 shutil.rmtree(target_path)
-            print(f"+ Copying Directory {src_path} => {target_path}")
+            print(f"+ Copying directory {src_path} => {target_path}")
             shutil.copytree(src_path, target_path)
+        else:
+            print(f"⚠️  Source path not found: {src_path}")
     
     print(f"✅ Updating app {app_name} to {target_rootfs} OK")
 
@@ -214,17 +220,17 @@ def clean_app(project:BuckyProject,app_name:str,target_rootfs:Optional[Path]=Non
 
     print(f"🧹 Cleaning app {app_name} from {target_rootfs}")
     for clean_path in app_info.clean_paths:
-        real_path = os.path.join(project.base_dir, target_rootfs, clean_path)
-        if os.path.exists(real_path):
+        real_path = Path(target_rootfs) / clean_path
+        if real_path.exists():
             print(f"- Removing {real_path}")
-            if os.path.isfile(real_path):
-                os.remove(real_path)
-            elif os.path.isdir(real_path):
+            if real_path.is_file():
+                real_path.unlink()
+            elif real_path.is_dir():
                 shutil.rmtree(real_path)
 
 
 def install_app_data(project:BuckyProject,app_name:str,target_rootfs:Optional[Path]=None):
-    app_info : AppInfo = project.apps[app_name]
+    app_info : AppInfo = project.apps.get(app_name)
     if app_info is None:
         raise ValueError(f"App {app_name} not found")
 
@@ -234,23 +240,25 @@ def install_app_data(project:BuckyProject,app_name:str,target_rootfs:Optional[Pa
     print(f"📋 Installing data for app {app_name} to {target_rootfs}")
 
     for data_path in app_info.data_paths:
-        src_path = os.path.join(project.base_dir,app_info.rootfs, data_path)
-        target_path = os.path.join(project.base_dir, target_rootfs, data_path)
-        if src_path.is_file():
-            if not os.path.exists(target_path.parent):
-                print(f"+ Creating directory {target_path.parent}")
-                os.makedirs(target_path.parent, exist_ok=True)
-            print(f"+ Copying {src_path} => {target_path}")
-            shutil.copy(src_path, target_path)
-        elif src_path.is_dir():
-            if os.path.exists(target_path):
-                print(f"- Removing {target_path}")
-                shutil.rmtree(target_path)
-            if not os.path.exists(target_path.parent):
-                print(f"+ Creating directory {target_path.parent}")
-                os.makedirs(target_path.parent, exist_ok=True)
-            print(f"+ Copying Directory {src_path} => {target_path}")
-            shutil.copytree(src_path, target_path)
+        src_path = Path(project.base_dir) / app_info.rootfs / data_path
+        target_path = Path(target_rootfs) / data_path
+        
+        if src_path.exists():
+            if src_path.is_file():
+                target_path.parent.mkdir(parents=True, exist_ok=True)
+                print(f"+ Copying file {src_path} => {target_path}")
+                shutil.copy(src_path, target_path)
+            elif src_path.is_dir():
+                if target_path.exists():
+                    print(f"- Removing {target_path}")
+                    shutil.rmtree(target_path)
+                target_path.parent.mkdir(parents=True, exist_ok=True)
+                print(f"+ Copying directory {src_path} => {target_path}")
+                shutil.copytree(src_path, target_path)
+        else:
+            # 数据路径可能还不存在，创建空目录
+            print(f"+ Creating data directory {target_path}")
+            target_path.mkdir(parents=True, exist_ok=True)
 
 
 def reinstall_app(bucky_project:BuckyProject, app_name:str, target_rootfs:Optional[Path]=None):

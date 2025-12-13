@@ -2,32 +2,41 @@ import os
 import shutil
 import platform
 from typing import Optional
-from project import WebModuleInfo, RustModuleInfo, BuckyProject
-from buckyos_kit import get_execute_name
+from .project import WebModuleInfo, RustModuleInfo, BuckyProject
+from .buckyos_kit import get_execute_name
 
 _system_name = platform.system()
 
 def copy_rust_module(project: BuckyProject, module_name:str):
-    module_info: Optional[RustModuleInfo] = project.modules[module_name]
+    module_info: Optional[RustModuleInfo] = project.modules.get(module_name)
     if not module_info:
         raise ValueError(f"Rust module {module_name} not found")
     if not isinstance(module_info, RustModuleInfo):
         raise ValueError(f"Rust module {module_name} is not a RustModuleInfo")
 
     for app_info in project.apps.values():
-        module_path = app_info.modules[module_name]
-        if module_path is None:
+        if module_name not in app_info.modules:
             continue
-        print(f'* Copying rust modules to app {app_info.name}...')
-        src_file = os.path.join(project.rust_target_dir, "release", module_name)
+        module_path = app_info.modules[module_name]
+        
+        print(f'* Copying rust module to app {app_info.name}...')
+        src_file = os.path.join(project.base_dir, project.rust_target_dir, "release", module_name)
         src_file = get_execute_name(src_file)
-        real_target = os.path.join(project.base_dir, app_info.rootfs, module_path)
+        
+        # 目标路径：rootfs/module_path/module_name
+        real_target_dir = os.path.join(project.base_dir, app_info.rootfs, module_path)
+        os.makedirs(real_target_dir, exist_ok=True)
+        real_target = os.path.join(real_target_dir, module_name)
+        real_target = get_execute_name(real_target)
+        
         print(f'+ Copying rust executable: {src_file} => {real_target}')
         shutil.copy(src_file, real_target)
+        # 确保可执行权限
+        os.chmod(real_target, 0o755)
 
 
 def copy_web_module(project: BuckyProject, module_name: str):
-    module_info: Optional[WebModuleInfo] = project.modules[module_name]
+    module_info: Optional[WebModuleInfo] = project.modules.get(module_name)
     if not module_info:
         raise ValueError(f"Web module {module_name} not found")
     if not isinstance(module_info, WebModuleInfo):
@@ -36,16 +45,18 @@ def copy_web_module(project: BuckyProject, module_name: str):
     dist_dir = os.path.join(project.base_dir, module_info.src_dir, "dist")
 
     for app_info in project.apps.values():
-        module_path = app_info.modules[module_name]
-        if module_path is None:
+        if module_name not in app_info.modules:
             continue
+        module_path = app_info.modules[module_name]
         
-        print(f'* Copying web modules to app {app_info.name}...')
+        print(f'* Copying web module to app {app_info.name}...')
         real_target_dir = os.path.join(project.base_dir, app_info.rootfs, module_path)
-        os.makedirs(real_target_dir, exist_ok=True)
+        
+        # 如果目标目录存在，先删除
         if os.path.exists(real_target_dir):
             print(f'- Removing existing directory: {real_target_dir}')
             shutil.rmtree(real_target_dir)
+        
         print(f'+ Copying web module dist: {dist_dir} => {real_target_dir}')
         shutil.copytree(dist_dir, real_target_dir, copy_function=shutil.copyfile)
 
