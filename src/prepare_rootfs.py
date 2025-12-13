@@ -25,9 +25,11 @@ def copy_rust_module(project: BuckyProject, module_name:str):
         src_file = get_execute_name(src_file)
         
         # 目标路径：rootfs/module_path/module_name
-        real_target = Path(project.base_dir) / app_info.rootfs / module_path / module_name
+        
         if not module_path.endswith("/"):
-            real_target = os.path.join(project.base_dir, app_info.rootfs, module_path)
+            real_target: Path = Path(project.base_dir) / app_info.rootfs / module_path
+        else:
+            real_target: Path = Path(project.base_dir) / app_info.rootfs / module_path / module_name
 
         os.makedirs(real_target.parent, exist_ok=True)
         real_target = get_execute_name(real_target)

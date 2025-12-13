@@ -5,7 +5,7 @@ import platform
 import sys
 from typing import Optional
 
-from .buckyos_kit import ensure_executable
+from .buckyos_kit import ensure_executable, get_execute_name
 from .project import AppInfo, BuckyProject
 
 src_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
@@ -193,7 +193,12 @@ def update_app(project:BuckyProject,app_name:str,target_rootfs:Optional[Path]=No
         
         if not module_path.endswith("/"):
             # 确保目标目录存在
+            print(f"target_path.parent: {target_path.parent}")
             target_path.parent.mkdir(parents=True, exist_ok=True)
+
+            src_path = get_execute_name(src_path)
+            target_path = get_execute_name(target_path)
+            
             print(f"+ Copying file {src_path} => {target_path}")
             shutil.copy(src_path, target_path)
             ensure_executable(str(target_path))
