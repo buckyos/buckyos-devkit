@@ -58,7 +58,7 @@ class AppInfo:
     default_target_rootfs: Path
     
     # 模块名 => 模块的安装路径
-    modules: Dict[str, Path] = field(default_factory=dict)
+    modules: Dict[str, str] = field(default_factory=dict)
     data_paths: List[Path] = field(default_factory=list)
     clean_paths: List[Path] = field(default_factory=list)
     
@@ -67,7 +67,7 @@ class AppInfo:
         """Create AppInfo from dictionary"""
         modules = {}
         for mod_name, mod_path in data.get('modules', {}).items():
-            modules[mod_name] = Path(mod_path)
+            modules[mod_name] = mod_path
         
         return cls(
             name=data['name'],
