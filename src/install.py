@@ -270,15 +270,7 @@ def reinstall_app(bucky_project:BuckyProject, app_name:str, target_rootfs:Option
 
 
 def install_main():
-    just_update: bool = True
     install_all: bool = "--all" in sys.argv or "reinstall" in sys.argv
-    if install_all and just_update:
-        print("`reinstall` and `update` cannot be true at the same time")
-        exit(1)
-
-    if install_all:
-        just_update = False
-
     app_name : Optional[str] = None
     for arg in sys.argv:
         if arg.startswith("--app="):
