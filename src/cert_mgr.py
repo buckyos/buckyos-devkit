@@ -180,7 +180,7 @@ class CertManager:
             conf_file.write("\n[req_distinguished_name]\n")
             conf_file.write(f"CN = {common_name}\n")
             conf_file.write("\n[v3_req]\n")
-            conf_file.write("keyUsage = keyEncipherment, dataEncipherment\n")
+            conf_file.write("keyUsage = critical, digitalSignature, keyEncipherment\n")
             conf_file.write("extendedKeyUsage = serverAuth\n")
             
             # Add Subject Alternative Names
