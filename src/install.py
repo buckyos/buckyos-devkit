@@ -185,7 +185,9 @@ def update_app(project:BuckyProject,app_name:str,skip_web_module:bool=False,chec
     if target_rootfs is None:
         target_rootfs = app_info.default_target_rootfs
     
-    if not os.path.exists(target_rootfs) and check_reinstall:
+    target_rootfs =Path(os.path.expanduser(os.path.expandvars(target_rootfs)))
+    
+    if not target_rootfs.exists() and check_reinstall:
         print(f"⚠️  App {app_name} target rootfs {target_rootfs} not exists, need reinstall...")
         return reinstall_app(project, app_name, skip_web_module, target_rootfs)
 
@@ -198,7 +200,7 @@ def update_app(project:BuckyProject,app_name:str,skip_web_module:bool=False,chec
                 continue
 
         src_path = Path(project.base_dir) / app_info.rootfs / module_path
-        target_path = Path(target_rootfs) / module_path
+        target_path = target_rootfs / module_path
         
         if not module_path.endswith("/"):
             # 确保目标目录存在
@@ -230,10 +232,12 @@ def clean_app(project:BuckyProject,app_name:str,target_rootfs:Optional[Path]=Non
 
     if target_rootfs is None:
         target_rootfs = app_info.default_target_rootfs
+    
+    target_rootfs = Path(os.path.expanduser(os.path.expandvars(target_rootfs)))
 
     print(f"🧹 Cleaning app {app_name} from {target_rootfs}")
     for clean_path in app_info.clean_paths:
-        real_path = Path(target_rootfs) / clean_path
+        real_path = target_rootfs / clean_path
         if real_path.exists():
             print(f"- Removing {real_path}")
             if real_path.is_file():
@@ -249,12 +253,15 @@ def install_app_data(project:BuckyProject,app_name:str,target_rootfs:Optional[Pa
 
     if target_rootfs is None:
         target_rootfs = app_info.default_target_rootfs
+    
+    # Expand ~ and environment variables in path
+    target_rootfs = Path(os.path.expanduser(os.path.expandvars(target_rootfs)))
 
     print(f"📋 Installing data for app {app_name} to {target_rootfs}")
 
     for data_path in app_info.data_paths:
         src_path = Path(project.base_dir) / app_info.rootfs / data_path
-        target_path = Path(target_rootfs) / data_path
+        target_path = target_rootfs / data_path
         if target_path.exists():
             print(f"⏭️ {target_path} already exists, keep user data.")
             continue;
