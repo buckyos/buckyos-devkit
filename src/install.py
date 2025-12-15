@@ -176,7 +176,7 @@ def install_buckyos_apps():
     return
     
 ########################################################
-def update_app(project:BuckyProject,app_name:str,skip_web_module:bool=False,target_rootfs:Optional[Path]=None):
+def update_app(project:BuckyProject,app_name:str,skip_web_module:bool=False,check_reinstall:bool=False,target_rootfs:Optional[Path]=None):
     # copy build modules to rootfs/
     app_info : Optional[AppInfo] = project.apps.get(app_name)
     if app_info is None:
@@ -185,9 +185,9 @@ def update_app(project:BuckyProject,app_name:str,skip_web_module:bool=False,targ
     if target_rootfs is None:
         target_rootfs = app_info.default_target_rootfs
     
-    if not os.path.exists(target_rootfs):
+    if not os.path.exists(target_rootfs) and check_reinstall:
         print(f"⚠️  App {app_name} target rootfs {target_rootfs} not exists, need reinstall...")
-        return reinstall_app(project, app_name, target_rootfs)
+        return reinstall_app(project, app_name, skip_web_module, target_rootfs)
 
     print(f"🎯 Updating modules for app {app_name} to {target_rootfs}")
 
@@ -255,7 +255,10 @@ def install_app_data(project:BuckyProject,app_name:str,target_rootfs:Optional[Pa
     for data_path in app_info.data_paths:
         src_path = Path(project.base_dir) / app_info.rootfs / data_path
         target_path = Path(target_rootfs) / data_path
-        
+        if target_path.exists():
+            print(f"⏭️ {target_path} already exists, keep user data.")
+            continue;
+            
         if src_path.exists():
             if src_path.is_file():
                 target_path.parent.mkdir(parents=True, exist_ok=True)
@@ -274,11 +277,11 @@ def install_app_data(project:BuckyProject,app_name:str,target_rootfs:Optional[Pa
             target_path.mkdir(parents=True, exist_ok=True)
 
 
-def reinstall_app(bucky_project:BuckyProject, app_name:str, target_rootfs:Optional[Path]=None):
+def reinstall_app(bucky_project:BuckyProject, app_name:str, skip_web_module:bool=False,target_rootfs:Optional[Path]=None):
     print(f"🔄 Reinstalling app {app_name} to {target_rootfs} ... ")
     clean_app(bucky_project, app_name, target_rootfs)
     install_app_data(bucky_project, app_name, target_rootfs)
-    update_app(bucky_project, app_name, target_rootfs)
+    update_app(bucky_project, app_name, skip_web_module, check_reinstall=False, target_rootfs=target_rootfs)
     print(f"✅ Reinstalling app {app_name} OK")
 
 
@@ -290,10 +293,12 @@ def install_main():
             target_rootfs = Path(arg.split("=")[1])
     install_all: bool = "--all" in sys.argv or "reinstall" in sys.argv
     app_name : Optional[str] = None
+    skip_web_module: bool = False
     for arg in sys.argv:
         if arg.startswith("--app="):
             app_name = arg.split("=")[1]
-
+        if arg.startswith("--skip-web"):
+            skip_web_module = True
     # Load project configuration
     config_file : Optional[Path] = BuckyProject.get_project_config_file()
     if config_file is None:
@@ -307,18 +312,18 @@ def install_main():
         if app_name is None:
             print("Installing all apps ... 🚀")
             for app_name in bucky_project.apps.keys():
-                reinstall_app(bucky_project, app_name, target_rootfs)
+                reinstall_app(bucky_project, app_name, skip_web_module, target_rootfs)
             return
         else:
-            reinstall_app(bucky_project, app_name, target_rootfs)
+            reinstall_app(bucky_project, app_name, skip_web_module, target_rootfs)
     else:
         if app_name is None:
             print("Updating all apps ... 🚀")
             for app_name in bucky_project.apps.keys():
-                update_app(bucky_project, app_name, skip_web_module, target_rootfs)
+                update_app(bucky_project, app_name, skip_web_module, check_reinstall=True, target_rootfs=target_rootfs)
             return
         else:
-            update_app(bucky_project, app_name, skip_web_module, target_rootfs)
+            update_app(bucky_project, app_name, skip_web_module, check_reinstall=True, target_rootfs=target_rootfs)
 
 if __name__ == "__main__":
     install_main()
