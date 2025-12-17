@@ -5,9 +5,14 @@ import locale
 
 _system_name = platform.system()
 
-def get_execute_name(file_name: str) -> str:
+def get_execute_name(file_name) -> str:
+    # Convert to string if it's a Path object or other type
+    file_name = str(file_name)
     if _system_name == "Windows":
-        return file_name + ".exe"
+        # Only add .exe if the filename (basename) has no extension
+        base_name = os.path.basename(file_name)
+        if '.' not in base_name:
+            file_name = file_name + ".exe"
     return file_name
 
 def ensure_executable(file_path: str):
