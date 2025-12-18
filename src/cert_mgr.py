@@ -70,6 +70,7 @@ class CertManager:
         
         # Generate CA private key
         print(f"Generating CA private key...")
+        print(f"  Command: {self.openssl_path} genrsa -out {str(ca_key_path)} {str(key_size)}")
         subprocess.run(
             [
                 self.openssl_path, "genrsa",
@@ -81,6 +82,11 @@ class CertManager:
         
         # Generate self-signed CA certificate
         print(f"Generating CA certificate...")
+        print(f"  Command: {self.openssl_path} req -x509 -new -nodes -key {str(ca_key_path)} -sha256 -days {str(validity_days)} -out {str(ca_cert_path)} -subj /C=US/ST=California/L=San Jose/O={organization}/OU=Test/CN={common_name}")
+        
+        # Use NUL (Windows) or /dev/null (Unix) to bypass config file requirement
+        config_path = "NUL" if os.name == 'nt' else "/dev/null"
+        
         subprocess.run(
             [
                 self.openssl_path, "req",
@@ -89,6 +95,7 @@ class CertManager:
                 "-sha256",
                 "-days", str(validity_days),
                 "-out", str(ca_cert_path),
+                "-config", config_path,
                 "-subj", f"/C=US/ST=California/L=San Jose/O={organization}/OU=Test/CN={common_name}"
             ],
             check=True

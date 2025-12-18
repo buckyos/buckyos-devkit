@@ -5,12 +5,13 @@ import platform
 import sys
 from typing import Optional
 
-from .buckyos_kit import ensure_executable, get_execute_name
+from .buckyos_kit import ensure_executable, get_execute_name, get_buckyos_root
 from .project import AppInfo, BuckyProject, WebModuleInfo
 
 src_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 
-install_root_dir = os.environ.get("BUCKYOS_ROOT", "")
+buckyos_root = get_buckyos_root();
+print(f"buckyos_root: {buckyos_root}")
 
 pre_install_apps = [
     {
@@ -19,41 +20,6 @@ pre_install_apps = [
     }
 ]
 
-if install_root_dir == "":
-    if platform.system() == "Windows":
-        install_root_dir = os.path.join(os.path.expandvars("%AppData%"), "buckyos")
-    else:
-        install_root_dir = "/opt/buckyos"
-
-def get_install_root_dir():
-    return install_root_dir
-
-def set_data_dir_permissions():
-    if platform.system() != "Windows":  # Windows doesn't need permission setting
-        import pwd
-        import grp
-        
-        # Get SUDO_USER environment variable, which is the actual user running sudo
-        real_user = os.environ.get('SUDO_USER')
-        if real_user:
-            data_dir = os.path.join(install_root_dir, "data")
-            if not os.path.exists(data_dir):
-                os.makedirs(data_dir)
-            
-            # Get the real user's uid and gid
-            uid = pwd.getpwnam(real_user).pw_uid
-            gid = pwd.getpwnam(real_user).pw_gid
-            
-            # Recursively set directory permissions
-            for root, dirs, files in os.walk(data_dir):
-                os.chown(root, uid, gid)
-                for d in dirs:
-                    os.chown(os.path.join(root, d), uid, gid)
-                for f in files:
-                    os.chown(os.path.join(root, f), uid, gid)
-            
-            # Set directory permissions to 755 (rwxr-xr-x)
-            os.chmod(data_dir, 0o755)
 
 def unzip_to_dir(zip_path, target_dir):
     """Extract zip file to target directory, content directly in target directory"""
@@ -314,6 +280,8 @@ def install_main():
     
     print(f"Loading project configuration from: {config_file}")
     bucky_project = BuckyProject.from_file(config_file)
+    os.environ["BUCKYOS_ROOT"] =  get_buckyos_root()
+
 
     if install_all:
         if app_name is None:
