@@ -178,7 +178,8 @@ def handle_update(workspace: Workspace, args: argparse.Namespace) -> None:
 
 
 def handle_start(workspace: Workspace, args: argparse.Namespace) -> None:
-    workspace.start()
+    print(f"start apps on device: {args.device_id} with apps: {args.apps}")
+    workspace.start_app(args.device_id, args.apps)
 
 
 def handle_stop(workspace: Workspace, args: argparse.Namespace) -> None:

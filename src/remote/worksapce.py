@@ -198,6 +198,22 @@ class Workspace:
             remote_device.push(source_bin_dir, target_bin_dir)
             self.execute_app_command(device_id, app_name, "update")
 
+    def start_app(self, device_id: Optional[str],app_list:list[str] = None):
+        if app_list is None:
+            app_list = self.app_list.get_all_app_names()
+
+        if device_id is None:
+            for device_id in self.remote_devices.keys():
+                self.start_app(device_id, app_list)
+            return
+
+        for app_name in app_list:
+            if not self.nodes.have_app(device_id, app_name):
+                print(f"App '{app_name}' not found in node: {device_id}, SKIP")
+                continue
+            print(f"start app: {app_name} on device: {device_id} ...")
+            self.execute_app_command(device_id, app_name, "start")
+
     def execute_app_command(self, device_id: Optional[str],app_name: str,cmd_name: str ,run_in_host: bool = False):
         # Execute action on remote_device based on app_list configuration in workspace, internally calls run
         vm_config = self.nodes.get_node(device_id)
