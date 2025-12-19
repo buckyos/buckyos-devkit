@@ -14,14 +14,16 @@ else:
 @dataclass
 class WebModuleInfo:
     name: str
-    src_dir: Path 
+    src_dir: Path
+    type: str = "web"
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'WebModuleInfo':
         """Create WebModuleInfo from dictionary"""
         return cls(
             name=data['name'],
-            src_dir=Path(data['src_dir'])
+            src_dir=Path(data['src_dir']),
+            type=data.get('type', 'web')
         )
     
     def to_dict(self) -> Dict[str, Any]:
@@ -35,13 +37,15 @@ class WebModuleInfo:
 class RustModuleInfo:
     name: str
     file_only: bool = False
+    type: str = "rust"
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'RustModuleInfo':
         """Create RustModuleInfo from dictionary"""
         return cls(
             name=data['name'],
-            file_only=data.get('file_only', False)
+            file_only=data.get('file_only', False),
+            type=data.get('type', 'rust')
         )
     
     def to_dict(self) -> Dict[str, Any]:

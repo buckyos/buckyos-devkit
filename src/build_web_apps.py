@@ -69,6 +69,15 @@ def build_web_module(project: BuckyProject, module_name: str):
 
 def build_web_modules(project: BuckyProject):
     """Build all web modules in the project"""
+    # 如果project里没有 web_modules 直接跳过这个函数
+    web_modules = [
+        module_name
+        for module_name, module_info in project.modules.items()
+        if project.modules[module_name].type == "web"
+    ]
+    if not web_modules:
+        return
+
     print(f'🚀 Building web modules ...')
     for module_name, module_info in project.modules.items():
         if isinstance(module_info, WebModuleInfo):
