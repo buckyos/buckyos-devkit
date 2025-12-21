@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "buckyos-devkit"
-version = "0.1.8"
+version = "0.1.9"
 description = "BuckyOS shared development script base library, including build, install, remote management tools"
 readme = "reademe.md"
 requires-python = ">=3.8"

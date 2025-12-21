@@ -116,14 +116,34 @@ def build_parser() -> argparse.ArgumentParser:
     )
     run_parser.set_defaults(handler=handle_run)
 
+    exec_parser = subparsers.add_parser(
+        "exec", help="Execute app command on a device."
+    )
+    exec_parser.add_argument(
+        "app_cmd",
+        help="App and command in format 'appname.cmdname' (e.g., 'buckyos.build_all')."
+    )
+    exec_parser.add_argument(
+        "--device",
+        dest="device_id",
+        default=None,
+        help="Target device id; omit to use default device."
+    )
+    exec_parser.add_argument(
+        "params",
+        nargs="*",
+        help="Additional parameters to pass to the command."
+    )
+    exec_parser.set_defaults(handler=handle_exec_app)
+
     return parser
 
 
 def build_workspace(group_name: str) -> Workspace:
     """Create and load a workspace instance."""
-    workspace_dir = os.path.join(os.getcwd(), "dev_configs", group_name)
-    print(f"{group_name} workspace_dir: {workspace_dir}")
-    workspace = Workspace(Path(workspace_dir))
+    workspace_dir = os.path.join(os.getcwd(), "dev_configs")
+    print(f"load workspace from {workspace_dir}/{group_name}.json ...")
+    workspace = Workspace(group_name, Path(workspace_dir))
     workspace.load()
     return workspace
 
@@ -176,10 +196,62 @@ def handle_update(workspace: Workspace, args: argparse.Namespace) -> None:
         return
     workspace.update(args.device_id, args.apps)
 
+def handle_exec_app(workspace: Workspace, args: argparse.Namespace) -> None:
+    """
+    Execute an app command on a device or all devices.
+    
+    Command format: exec appname.cmdname [--device=device_id] [params...]
+    Example: exec buckyos.build_all --device=bob-ood1
+    If --device is not specified, the command will be executed on all devices.
+    """
+    # Parse appname.cmdname format
+    if "." not in args.app_cmd:
+        print(f"Error: Invalid format. Expected 'appname.cmdname', got '{args.app_cmd}'")
+        print("Example: buckyos.build_all")
+        return
+    
+    app_name, cmd_name = args.app_cmd.split(".", 1)
+    device_id = args.device_id
+    
+    # Determine target devices
+    if device_id is None:
+        # Execute on all devices
+        target_devices = list(workspace.remote_devices.keys())
+        if not target_devices:
+            print("Error: No devices available in workspace.")
+            return
+        print(f"Executing app command: {app_name}.{cmd_name} on all devices: {target_devices}")
+    else:
+        # Validate device_id
+        if device_id not in workspace.remote_devices:
+            print(f"Error: Device '{device_id}' not found in workspace.")
+            print(f"Available devices: {list(workspace.remote_devices.keys())}")
+            return
+        target_devices = [device_id]
+        print(f"Executing app command: {app_name}.{cmd_name} on device: {device_id}")
+    
+    if args.params:
+        print(f"Command parameters: {args.params}")
+        # Note: Additional params are captured but not directly passed to execute_app_command
+        # They could be used via environment variables in command templates if needed
+    
+    # Execute the command on each target device
+    for target_device_id in target_devices:
+        try:
+            print(f"\n--- Executing on device: {target_device_id} ---")
+            workspace.execute_app_command(target_device_id, app_name, cmd_name, run_in_host=False)
+        except ValueError as e:
+            print(f"Error on device {target_device_id}: {e}")
+            continue
+        except Exception as e:
+            print(f"Unexpected error on device {target_device_id}: {e}")
+            import traceback
+            traceback.print_exc()
+            continue
+
 
 def handle_start(workspace: Workspace, args: argparse.Namespace) -> None:
-    print(f"start apps on device: {args.device_id} with apps: {args.apps}")
-    workspace.start_app(args.device_id, args.apps)
+    workspace.start()
 
 
 def handle_stop(workspace: Workspace, args: argparse.Namespace) -> None:

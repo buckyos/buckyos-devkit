@@ -281,8 +281,6 @@ def install_main():
     print(f"Loading project configuration from: {config_file}")
     bucky_project = BuckyProject.from_file(config_file)
     os.environ["BUCKYOS_ROOT"] =  get_buckyos_root()
-    if os.environ.get("APPDATA") is None:
-        os.environ["APPDATA"] = "/opt/"
 
 
     if install_all:
