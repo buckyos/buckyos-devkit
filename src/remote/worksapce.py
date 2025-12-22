@@ -40,7 +40,7 @@ class Workspace:
 
     def load(self):
         # Load configuration from workspace
-        nodes_config_path = self.workspace_dir / "nodes.json"
+        nodes_config_path = self.workspace_dir / f"{self.group_name}.json"
         self.nodes = VMNodeList()
         self.nodes.load_from_file(nodes_config_path)
 
