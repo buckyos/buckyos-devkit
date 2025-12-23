@@ -93,6 +93,17 @@ def build_parser() -> argparse.ArgumentParser:
     start_parser = subparsers.add_parser(
         "start", help="Start buckyos on all VMs (SN not started)."
     )
+    start_parser.add_argument(
+        "device_id",
+        nargs="?",
+        default=None,
+        help="Target device id; omit to start all devices.",
+    )
+    start_parser.add_argument(
+        "--apps",
+        nargs="+",
+        help="Specify app names to start; defaults to all configured apps.",
+    )
     start_parser.set_defaults(handler=handle_start)
 
     stop_parser = subparsers.add_parser(
@@ -196,6 +207,14 @@ def handle_update(workspace: Workspace, args: argparse.Namespace) -> None:
         return
     workspace.update(args.device_id, args.apps)
 
+def handle_start(workspace: Workspace, args: argparse.Namespace) -> None:
+    print(f"start apps on device: {args.device_id} with apps: {args.apps}")
+    if args.device_id is None:
+        for device_id in workspace.remote_devices.keys():
+            workspace.start(device_id, args.apps)
+        return
+    workspace.start(args.device_id, args.apps)
+
 def handle_exec_app(workspace: Workspace, args: argparse.Namespace) -> None:
     """
     Execute an app command on a device or all devices.
@@ -250,8 +269,7 @@ def handle_exec_app(workspace: Workspace, args: argparse.Namespace) -> None:
             continue
 
 
-def handle_start(workspace: Workspace, args: argparse.Namespace) -> None:
-    workspace.start()
+
 
 
 def handle_stop(workspace: Workspace, args: argparse.Namespace) -> None:

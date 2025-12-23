@@ -167,7 +167,24 @@ class Workspace:
             # Push files from Host Source directory to remote_device target directory based on directory settings
             remote_device.push(source_dir, target_dir)
             self.execute_app_command(device_id, app_name, "install")
+
+    def start(self, device_id: str,app_list:list[str] = None):
+        # Start apps on remote_device based on app_list configuration in workspace
+        if app_list is None:
+            app_list = self.app_list.get_all_app_names()
+        print(f"start apps on device: {device_id} with apps: {app_list}")
+        remote_device = self.remote_devices[device_id]
+        if remote_device is None:
+            raise ValueError(f"Remote device '{device_id}' not found")
         
+        for app_name in app_list:
+            if not self.nodes.have_app(device_id, app_name):
+                print(f"App '{app_name}' not install on {device_id}, SKIP")
+                continue
+            app_config = self.app_list.get_app(app_name)
+            if app_config is None:
+                raise ValueError(f"App '{app_name}' not found")
+            self.execute_app_command(device_id, app_name, "start")
 
     def update(self, device_id: str,app_list:list[str] = None):
         # Update apps on remote_device based on app_list configuration in workspace
@@ -182,6 +199,9 @@ class Workspace:
             raise ValueError(f"Remote device '{device_id}' not found")
 
         for app_name in app_list:
+            if not self.nodes.have_app(device_id, app_name):
+                print(f"App '{app_name}' not install on {device_id}, SKIP")
+                continue
             app_config = self.app_list.get_app(app_name)
             if app_config is None:
                 raise ValueError(f"App '{app_name}' not found")
@@ -204,12 +224,12 @@ class Workspace:
         vm_config = self.nodes.get_node(device_id)
         if vm_config is None:
             raise ValueError(f"Node '{device_id}' not found")
+        app_env_params = {}
         app_param = self.nodes.get_app_params(device_id, app_name)
-        if app_param is None:
-            raise ValueError(f"App '{app_name}' not found")
-        app_env_params = {
-            app_name: app_param
-        }
+        if app_param:
+            app_env_params = {
+                app_name: app_param
+            }
         env_params = self.build_env_params(app_env_params)
         app_config = self.app_list.get_app(app_name)
         if app_config is None:
