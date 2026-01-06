@@ -20,6 +20,39 @@ pre_install_apps = [
     }
 ]
 
+def _is_probably_executable(file_path: Path) -> bool:
+    # 通过文件头判断是否可能是可执行文件（脚本或 ELF）
+    try:
+        with open(file_path, "rb") as f:
+            head = f.read(4)
+        return head.startswith(b"#!") or head.startswith(b"\x7fELF")
+    except OSError:
+        return False
+
+def _ensure_executable_files_in_dir(directory_path: Path) -> None:
+    # 仅在 Linux 下扫描目录内文件，必要时补齐可执行权限
+    if platform.system().lower() != "linux":
+        return
+    for root, _, files in os.walk(directory_path):
+        for name in files:
+            file_path = Path(root) / name
+            if _is_probably_executable(file_path) and not os.access(file_path, os.X_OK):
+                try:
+                    mode = os.stat(file_path).st_mode
+                    os.chmod(file_path, mode | 0o111)
+                except OSError as e:
+                    print(f"Warning: chmod +x failed for {file_path}: {e}")
+
+def _copy_dir_with_exec_fix(src_path: Path, target_path: Path) -> None:
+    # 复制目录后，修复可执行文件权限
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    if target_path.exists():
+        print(f"- Removing {target_path}")
+        shutil.rmtree(target_path)
+    print(f"+ Copying directory {src_path} => {target_path}")
+    shutil.copytree(src_path, target_path)
+    _ensure_executable_files_in_dir(target_path)
+
 
 def unzip_to_dir(zip_path, target_dir):
     """Extract zip file to target directory, content directly in target directory"""
@@ -181,12 +214,7 @@ def update_app(project:BuckyProject,app_name:str,skip_web_module:bool=False,chec
             ensure_executable(str(target_path))
         else:
             # 确保目标父目录存在
-            target_path.parent.mkdir(parents=True, exist_ok=True)
-            if target_path.exists():
-                print(f"- Removing {target_path}")
-                shutil.rmtree(target_path)
-            print(f"+ Copying directory {src_path} => {target_path}")
-            shutil.copytree(src_path, target_path)
+            _copy_dir_with_exec_fix(src_path, target_path)
 
     
     print(f"✅ Updating app {app_name} to {target_rootfs} OK")
@@ -238,12 +266,7 @@ def install_app_data(project:BuckyProject,app_name:str,target_rootfs:Optional[Pa
                 print(f"+ Copying file {src_path} => {target_path}")
                 shutil.copy(src_path, target_path)
             elif src_path.is_dir():
-                if target_path.exists():
-                    print(f"- Removing {target_path}")
-                    shutil.rmtree(target_path)
-                target_path.parent.mkdir(parents=True, exist_ok=True)
-                print(f"+ Copying directory {src_path} => {target_path}")
-                shutil.copytree(src_path, target_path)
+                _copy_dir_with_exec_fix(src_path, target_path)
         else:
             # 数据路径可能还不存在，创建空目录
             print(f"+ Creating data directory {target_path}")
