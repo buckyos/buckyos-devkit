@@ -33,6 +33,7 @@ def _ensure_executable_files_in_dir(directory_path: Path) -> None:
     # 仅在 Linux 下扫描目录内文件，必要时补齐可执行权限
     if platform.system().lower() != "linux":
         return
+    chmod_count = 0
     for root, _, files in os.walk(directory_path):
         for name in files:
             file_path = Path(root) / name
@@ -40,8 +41,11 @@ def _ensure_executable_files_in_dir(directory_path: Path) -> None:
                 try:
                     mode = os.stat(file_path).st_mode
                     os.chmod(file_path, mode | 0o111)
+                    chmod_count += 1
                 except OSError as e:
                     print(f"Warning: chmod +x failed for {file_path}: {e}")
+    if chmod_count:
+        print(f"# set +x for {chmod_count} files under {directory_path}")
 
 def _copy_dir_with_exec_fix(src_path: Path, target_path: Path) -> None:
     # 复制目录后，修复可执行文件权限
@@ -213,7 +217,6 @@ def update_app(project:BuckyProject,app_name:str,skip_web_module:bool=False,chec
             shutil.copy(src_path, target_path)
             ensure_executable(str(target_path))
         else:
-            # 确保目标父目录存在
             _copy_dir_with_exec_fix(src_path, target_path)
 
     
