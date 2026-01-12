@@ -139,7 +139,7 @@ BuckyOS DevKit 安装验证
 
 ## 📚 更多文档
 
-- [README.md](./reademe.md) - 项目概览和快速开始
+- [README.md](./README.md) - 项目概览和快速开始
 - [USAGE_EXAMPLE.md](./USAGE_EXAMPLE.md) - 详细的使用示例和 API 文档
 - [LOCAL_INSTALL.md](./LOCAL_INSTALL.md) - 本地安装详细说明和故障排除
 
@@ -210,4 +210,3 @@ python3 test_installation.py
 4. 根据需要扩展和自定义工具函数
 
 祝您开发顺利！🚀
-

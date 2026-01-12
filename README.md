@@ -38,6 +38,25 @@ python3 test_installation.py
 - `buckyos-install` - 安装工具
 - `buckyos-remote` - 远程管理工具
 
+### Rust 版本信息注入
+
+`buckyos-build` 在编译时会注入以下环境变量，可用于输出完整版本信息：
+
+- `BUCKYOS_BUILD_DATE` (YYYY-MM-DD)
+- `BUCKYOS_BUILD_TIMESTAMP` (UTC ISO-8601)
+- `BUCKYOS_GIT_COMMIT`
+- `BUCKYOS_GIT_BRANCH`
+- `BUCKYOS_GIT_DESCRIBE`
+- `BUCKYOS_GIT_DIRTY` (0/1)
+
+Rust 示例：
+
+```rust
+const BUILD_DATE: &str = env!("BUCKYOS_BUILD_DATE");
+const GIT_COMMIT: &str = env!("BUCKYOS_GIT_COMMIT");
+const GIT_BRANCH: &str = env!("BUCKYOS_GIT_BRANCH");
+```
+
 ### 在代码中使用
 
 ```python

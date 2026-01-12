@@ -286,5 +286,4 @@ if __name__ == '__main__':
 
 - [USAGE_EXAMPLE.md](./USAGE_EXAMPLE.md) - 更多使用示例
 - [QUICK_START.md](./QUICK_START.md) - 快速开始指南
-- [reademe.md](./reademe.md) - 项目概览
-
+- [README.md](./README.md) - 项目概览

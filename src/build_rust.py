@@ -5,6 +5,7 @@ import sys
 import subprocess
 import platform
 import shutil
+from datetime import datetime
 from typing import Optional,Dict
 
 from .project import BuckyProject
@@ -18,6 +19,46 @@ def check_aarch64_toolchain():
     if shutil.which('aarch64-linux-gnu-gcc') is None:
         print("Error: aarch64-linux-gnu-gcc not found. Please install gcc-aarch64-linux-gnu.")
         sys.exit(1)
+
+def _git_output(base_dir: str, args: list[str]) -> Optional[str]:
+    if shutil.which("git") is None:
+        return None
+    result = subprocess.run(
+        ["git", *args],
+        cwd=base_dir,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip()
+
+def get_build_metadata(base_dir: str) -> Dict[str, str]:
+    now = datetime.utcnow()
+    env = {
+        "BUCKYOS_BUILD_DATE": now.strftime("%Y-%m-%d"),
+        "BUCKYOS_BUILD_TIMESTAMP": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+    }
+
+    in_repo = _git_output(base_dir, ["rev-parse", "--is-inside-work-tree"])
+    if in_repo != "true":
+        env.update({
+            "BUCKYOS_GIT_COMMIT": "unknown",
+            "BUCKYOS_GIT_BRANCH": "unknown",
+            "BUCKYOS_GIT_DESCRIBE": "unknown",
+            "BUCKYOS_GIT_DIRTY": "0",
+        })
+        return env
+
+    env.update({
+        "BUCKYOS_GIT_COMMIT": _git_output(base_dir, ["rev-parse", "--short=12", "HEAD"]) or "unknown",
+        "BUCKYOS_GIT_BRANCH": _git_output(base_dir, ["rev-parse", "--abbrev-ref", "HEAD"]) or "unknown",
+        "BUCKYOS_GIT_DESCRIBE": _git_output(base_dir, ["describe", "--tags", "--always", "--dirty"]) or "unknown",
+    })
+    dirty = _git_output(base_dir, ["status", "--porcelain"])
+    env["BUCKYOS_GIT_DIRTY"] = "1" if dirty else "0"
+    return env
 
 def clean_rust_build(project: BuckyProject):
     print(f"Cleaning build artifacts at ${project.rust_target_dir}")
@@ -163,6 +204,9 @@ def get_cross_compile_env_vars_by_target(target: str) -> Optional[Dict[str, str]
 def build_rust_modules(project: BuckyProject,rust_target: str):
     print(f"🚀 Building Rust code,target_dir is {project.rust_target_dir},target is {rust_target}")
     env = os.environ.copy()
+    build_env = get_build_metadata(str(project.base_dir))
+    for key, value in build_env.items():
+        env.setdefault(key, value)
     env.update(project.rust_env)
 
     env_vars = get_env_vars_by_target(rust_target)
