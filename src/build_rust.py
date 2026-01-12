@@ -5,6 +5,7 @@ import sys
 import subprocess
 import platform
 import shutil
+import re
 from datetime import datetime
 from typing import Optional,Dict
 
@@ -59,6 +60,22 @@ def get_build_metadata(base_dir: str) -> Dict[str, str]:
     dirty = _git_output(base_dir, ["status", "--porcelain"])
     env["BUCKYOS_GIT_DIRTY"] = "1" if dirty else "0"
     return env
+
+def _sanitize_version_token(value: str) -> str:
+    token = re.sub(r"[^0-9A-Za-z._-]+", "-", value).strip("-.")
+    return token or "unknown"
+
+def get_default_version(build_env: Dict[str, str]) -> str:
+    branch = build_env.get("BUCKYOS_GIT_BRANCH", "unknown")
+    commit = build_env.get("BUCKYOS_GIT_COMMIT", "unknown")
+    build_date = build_env.get("BUCKYOS_BUILD_DATE", "unknown")
+    dirty = build_env.get("BUCKYOS_GIT_DIRTY", "0")
+
+    parts = [branch, commit, build_date]
+    if dirty == "1":
+        parts.append("dirty")
+    suffix = _sanitize_version_token(".".join(parts))
+    return f"0+{suffix}"
 
 def clean_rust_build(project: BuckyProject):
     print(f"Cleaning build artifacts at ${project.rust_target_dir}")
@@ -207,6 +224,7 @@ def build_rust_modules(project: BuckyProject,rust_target: str):
     build_env = get_build_metadata(str(project.base_dir))
     for key, value in build_env.items():
         env.setdefault(key, value)
+    env.setdefault("VERSION", get_default_version(build_env))
     env.update(project.rust_env)
 
     env_vars = get_env_vars_by_target(rust_target)
