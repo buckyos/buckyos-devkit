@@ -97,6 +97,7 @@ class AppInfo:
 class BuckyProject:
     """BuckyOS project configuration"""
     name: str
+    version: str
     base_dir: Path = field(default_factory=Path.cwd)
     modules: Dict[str, WebModuleInfo | RustModuleInfo] = field(default_factory=dict)
     apps: Dict[str, AppInfo] = field(default_factory=dict)
@@ -220,6 +221,7 @@ class BuckyProject:
         # Create project
         project = cls(
             name=data['name'],
+            version=data.get('version', '0.1.0'),
             base_dir=base_dir,
             modules=modules,
             apps=apps,
@@ -249,6 +251,7 @@ class BuckyProject:
         
         return {
             'name': self.name,
+            'version': self.version,
             'base_dir': str(self.base_dir),
             'modules': modules_dict,
             'apps': apps_dict,

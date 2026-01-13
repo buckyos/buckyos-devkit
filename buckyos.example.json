@@ -1,5 +1,6 @@
 {
   "name": "my-buckyos-project",
+  "version": "0.1.0",
   "base_dir": "/path/to/your/project",
   "modules": {
     "node_active": {

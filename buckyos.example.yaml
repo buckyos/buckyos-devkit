@@ -1,6 +1,6 @@
 name: my-buckyos-project
 base_dir: /path/to/your/project
-
+version: 0.1.0
 modules:
   node_active:
     type: web

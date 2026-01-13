@@ -1,6 +1,7 @@
 {
   "name": "test-project",
   "base_dir": ".",
+  "version": "0.1.0",
   "modules": {
     "web_frontend": {
       "type": "web",
