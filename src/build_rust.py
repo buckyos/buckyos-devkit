@@ -223,8 +223,10 @@ def build_rust_modules(project: BuckyProject,rust_target: str):
     build_env = get_build_metadata(str(project.base_dir))
     for key, value in build_env.items():
         env.setdefault(key, value)
-    env.setdefault("VERSION", project.version)
-    env.setdefault("VERSION_EXTEND", make_version_extend(build_env))
+    env['VERSION'] = project.version
+    print(f"set VERSION={env['VERSION']}")
+    env["VERSION_EXTEND"] = make_version_extend(build_env)
+    print(f"set VERSION_EXTEND={env['VERSION_EXTEND']}")
     env.update(project.rust_env)
 
     env_vars = get_env_vars_by_target(rust_target)
@@ -233,7 +235,7 @@ def build_rust_modules(project: BuckyProject,rust_target: str):
     cross_compile_env_vars = get_cross_compile_env_vars_by_target(rust_target)
     if cross_compile_env_vars:
         print("⚠️ cross compile enabled for target: ", rust_target)
-        env.update(env_vars)
+        env.update(cross_compile_env_vars)
         print("* cargo build --release --target", rust_target, "--target-dir", project.rust_target_dir)
         subprocess.run(["cargo", "build", "--release", "--target", rust_target, "--target-dir", project.rust_target_dir], 
                     check=True, 
