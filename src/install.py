@@ -57,6 +57,14 @@ def _copy_dir_with_exec_fix(src_path: Path, target_path: Path) -> None:
     shutil.copytree(src_path, target_path)
     _ensure_executable_files_in_dir(target_path)
 
+def _is_empty_dir(path: Path) -> bool:
+    if not path.is_dir():
+        return False
+    try:
+        return next(path.iterdir(), None) is None
+    except OSError:
+        return False
+
 
 def unzip_to_dir(zip_path, target_dir):
     """Extract zip file to target directory, content directly in target directory"""
@@ -190,9 +198,13 @@ def update_app(project:BuckyProject,app_name:str,skip_web_module:bool=False,chec
     
     target_rootfs =Path(os.path.expanduser(os.path.expandvars(target_rootfs)))
     
-    if not target_rootfs.exists() and check_reinstall:
-        print(f"⚠️  App {app_name} target rootfs {target_rootfs} not exists, need reinstall...")
-        return reinstall_app(project, app_name, skip_web_module, target_rootfs)
+    if check_reinstall:
+        if not target_rootfs.exists():
+            print(f"⚠️  App {app_name} target rootfs {target_rootfs} not exists, need reinstall...")
+            return reinstall_app(project, app_name, skip_web_module, target_rootfs)
+        if _is_empty_dir(target_rootfs):
+            print(f"⚠️  App {app_name} target rootfs {target_rootfs} is empty, need reinstall...")
+            return reinstall_app(project, app_name, skip_web_module, target_rootfs)
 
     print(f"🎯 Updating modules for app {app_name} to {target_rootfs}")
 

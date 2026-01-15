@@ -64,6 +64,15 @@ buckyos-install
 buckyos-install --all
 ```
 
+更新模式下会检查目标目录，以下两种情况会被视为“全新安装”，并自动触发重新安装流程（日志示例）：
+
+```text
+⚠️  App <app_name> target rootfs <path> not exists, need reinstall...
+⚠️  App <app_name> target rootfs <path> is empty, need reinstall...
+```
+
+注意：覆盖安装不会更新已有的 cache 文件（如需刷新缓存，请手动清理后再安装）。
+
 默认安装位置：
 - Linux: `/opt/buckyos`
 - Windows: `%APPDATA%\buckyos`
@@ -232,4 +241,3 @@ workspace.stop()
 2. 在 Linux 上安装到系统目录需要 sudo 权限
 3. 远程管理工具依赖 Multipass 虚拟机管理工具
 4. 构建 Rust 项目需要预先安装 Rust 工具链
-
