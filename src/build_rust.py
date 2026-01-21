@@ -9,7 +9,7 @@ import re
 from datetime import datetime
 from typing import Optional,Dict
 
-from .project import BuckyProject
+from .project import BuckyProject, RustModuleInfo
 
 def check_musl_gcc():
     if shutil.which('musl-gcc') is None:
@@ -217,7 +217,7 @@ def get_cross_compile_env_vars_by_target(target: str) -> Optional[Dict[str, str]
     
     return env_vars
 
-def build_rust_modules(project: BuckyProject,rust_target: str):
+def build_rust_modules(project: BuckyProject, rust_target: str, selected_modules: list[str] | None = None):
     print(f"🚀 Building Rust code,target_dir is {project.rust_target_dir},target is {rust_target}")
     env = os.environ.copy()
     build_env = get_build_metadata(str(project.base_dir))
@@ -233,17 +233,37 @@ def build_rust_modules(project: BuckyProject,rust_target: str):
     env.update(env_vars)
     
     cross_compile_env_vars = get_cross_compile_env_vars_by_target(rust_target)
+    cargo_args = ["cargo", "build", "--release", "--target-dir", str(project.rust_target_dir)]
+    if selected_modules is not None:
+        rust_modules = [
+            module_name
+            for module_name, module_info in project.modules.items()
+            if isinstance(module_info, RustModuleInfo)
+        ]
+        selected_set = set(selected_modules)
+        rust_modules = [module_name for module_name in rust_modules if module_name in selected_set]
+
+        if not rust_modules:
+            print("No Rust modules selected; skipping Rust build.")
+            return
+
+        for module_name in rust_modules:
+            cargo_args.extend(["-p", module_name])
+
     if cross_compile_env_vars:
         print("⚠️ cross compile enabled for target: ", rust_target)
         env.update(cross_compile_env_vars)
-        print("* cargo build --release --target", rust_target, "--target-dir", project.rust_target_dir)
-        subprocess.run(["cargo", "build", "--release", "--target", rust_target, "--target-dir", project.rust_target_dir], 
+        cargo_args_with_target = cargo_args[:]
+        cargo_args_with_target.insert(3, rust_target)
+        cargo_args_with_target.insert(3, "--target")
+        print("*", " ".join(cargo_args_with_target))
+        subprocess.run(cargo_args_with_target,
                     check=True, 
                     cwd=project.base_dir, 
                     env=env)
     else:
-        print("* cargo build --release --target-dir", project.rust_target_dir)
-        subprocess.run(["cargo", "build", "--release", "--target-dir", project.rust_target_dir], 
+        print("*", " ".join(cargo_args))
+        subprocess.run(cargo_args,
                     check=True, 
                     cwd=project.base_dir, 
                     env=env)

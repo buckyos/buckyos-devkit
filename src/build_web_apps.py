@@ -67,21 +67,23 @@ def build_web_module(project: BuckyProject, module_name: str):
     subprocess.run(cmd, shell=True, cwd=work_dir, check=True)
     print(f'Build web module {module_name} completed')
 
-def build_web_modules(project: BuckyProject):
-    """Build all web modules in the project"""
+def build_web_modules(project: BuckyProject, selected_modules: List[str] | None = None):
+    """Build web modules in the project"""
     # 如果project里没有 web_modules 直接跳过这个函数
     web_modules = [
         module_name
         for module_name, module_info in project.modules.items()
         if project.modules[module_name].type == "web"
     ]
+    if selected_modules is not None:
+        selected_set = set(selected_modules)
+        web_modules = [module_name for module_name in web_modules if module_name in selected_set]
     if not web_modules:
         return
 
     print(f'🚀 Building web modules ...')
-    for module_name, module_info in project.modules.items():
-        if isinstance(module_info, WebModuleInfo):
-            build_web_module(project, module_name)
+    for module_name in web_modules:
+        build_web_module(project, module_name)
     
     print(f'✅ Build web modules completed')
 

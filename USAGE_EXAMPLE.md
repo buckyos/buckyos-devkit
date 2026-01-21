@@ -47,11 +47,37 @@ buckyos-build amd64
 # 构建 aarch64 版本
 buckyos-build aarch64
 
+# 交互式选择要构建的模块
+buckyos-build --select
+# 或简写
+buckyos-build -s
+
 # 包含 tray controller
 buckyos-build --tray-controller
 
 # Windows 自动 SDK
 buckyos-build --auto-win-sdk
+```
+
+交互式选择模式说明：
+- 使用上下方向键移动，空格勾选/取消，回车确认。
+- 选中的模块会以 `[*]` 显示，未选中的以 `[ ]` 显示。
+
+示例输出（模块列表）：
+```text
+Select modules to build: up/down move, space toggle, Enter confirm
+
+[ ] node_daemon (rust)
+[ ] system_config (rust)
+[ ] verify_hub (rust)
+[ ] scheduler (rust)
+[ ] smb_service (rust)
+[ ] repo_service (rust)
+[*] buckycli (rust)
+[ ] node_active (web)
+[ ] control_panel (rust)
+[ ] control_panel_web (web)
+[ ] sys_test (web)
 ```
 
 ### 2. buckyos-install - 安装工具

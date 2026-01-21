@@ -80,9 +80,16 @@ def copy_web_module(project: BuckyProject, module_name: str):
         shutil.copytree(dist_dir, real_target_dir, copy_function=shutil.copyfile)
 
 
-def copy_build_results(project: BuckyProject, skip_web_module: bool, rust_target: Optional[str] = None):
+def copy_build_results(
+    project: BuckyProject,
+    skip_web_module: bool,
+    rust_target: Optional[str] = None,
+    selected_modules: list[str] | None = None,
+):
     print("🚀 Copying build result ...")
     for module_name, module_info in project.modules.items():
+        if selected_modules is not None and module_name not in selected_modules:
+            continue
         if isinstance(module_info, RustModuleInfo):
             copy_rust_module(project, module_name, rust_target)
         elif isinstance(module_info, WebModuleInfo):
