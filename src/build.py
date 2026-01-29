@@ -139,6 +139,7 @@ def build_main():
     print(f"DEBUG: system:{system},arch:{arch}")
     target = ""
     select_mode = False
+    selected_modules = None
     if system == "Linux" and (arch == "x86_64" or arch == "AMD64"):
         target = "x86_64-unknown-linux-musl"
     elif system == "Windows" and (arch == "x86_64" or arch == "AMD64"):
@@ -148,17 +149,43 @@ def build_main():
     elif system == "Darwin" and (arch == "arm64" or arch == "arm"):
         target = "aarch64-apple-darwin"
 
-    for arg in sys.argv:
+    args = sys.argv[1:]
+    i = 0
+    while i < len(args):
+        arg = args[i]
         if arg == "--skip-web":
             skip_web_module = True
+            i += 1
+            continue
         if arg == "--select" or arg == "-s":
-            select_mode = True
+            # Examples: "-s mod_a mod_b" builds those modules; "-s" enters interactive selection.
+            modules = []
+            j = i + 1
+            while j < len(args) and not args[j].startswith("-"):
+                modules.append(args[j])
+                j += 1
+            if modules:
+                if selected_modules is None:
+                    selected_modules = set(modules)
+                else:
+                    selected_modules.update(modules)
+            elif selected_modules is None:
+                select_mode = True
+            i = j
+            continue
         if arg == "amd64":
             target = "x86_64-unknown-linux-musl"
+            i += 1
+            continue
         if arg == "aarch64":
             target = "aarch64-unknown-linux-musl"
+            i += 1
+            continue
         if arg.startswith("--target="):
-            target = arg.split("=")[1]
+            target = arg.split("=", 1)[1]
+            i += 1
+            continue
+        i += 1
 
     # Load project configuration
     # Load project configuration
@@ -170,8 +197,7 @@ def build_main():
     print(f"Loading project configuration from: {config_file}")
     bucky_project = BuckyProject.from_file(config_file)
 
-    selected_modules = None
-    if select_mode:
+    if selected_modules is None and select_mode:
         selected_modules = _prompt_select_modules(bucky_project, skip_web_module)
         if not selected_modules:
             print("No modules selected; build skipped.")
