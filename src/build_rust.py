@@ -170,7 +170,12 @@ def get_cross_compile_env_vars_by_target(target: str) -> Optional[Dict[str, str]
     # Special case: macOS supports building for both x86_64 and aarch64 natively
     if host_os == 'darwin' and target_os == 'darwin':
         # macOS can cross-compile between x86_64 and aarch64 without special tools
-        return None
+        if host_arch != target_arch:
+            print(f"⚠️ Cross-arch compilation on macOS from {host_arch} to {target_arch} detected.")
+            print(f"   This is supported natively by the Rust toolchain on macOS.")
+            return {"CROSS_COMPILE_MACOS": "1"}
+        else:
+            return None
     
     # If OS differs, cross-compilation is complex and may not be supported
     if host_os != target_os:
