@@ -191,7 +191,7 @@ def build_main():
     # Load project configuration
     config_file : Optional[Path] = BuckyProject.get_project_config_file()
     if config_file is None:
-        print("Error: No bucky_project.json or bucky_project.yaml configuration file found in current directory")
+        print("Error: No bucky_project.json or bucky_project.yaml configuration file found in current directory or current directory/src")
         sys.exit(1)
     
     print(f"Loading project configuration from: {config_file}")

@@ -293,8 +293,12 @@ class BuckyProject:
     @classmethod
     def get_project_config_file(cls) -> Optional[Path]:
         """Get the project configuration file"""
-        for name in ['bucky_project.json', 'bucky_project.yaml', 'bucky_project.yml']:
-            path = Path.cwd() / name
-            if path.exists():
-                return path
+        cwd = Path.cwd()
+        search_dirs = [cwd, cwd / 'src']
+
+        for search_dir in search_dirs:
+            for name in ['bucky_project.json', 'bucky_project.yaml', 'bucky_project.yml']:
+                path = search_dir / name
+                if path.exists():
+                    return path
         return None
