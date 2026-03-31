@@ -194,9 +194,9 @@ def update_app(project:BuckyProject,app_name:str,skip_web_module:bool=False,chec
         raise ValueError(f"App {app_name} not found")
 
     if target_rootfs is None:
-        target_rootfs = app_info.default_target_rootfs
-    
-    target_rootfs =Path(os.path.expanduser(os.path.expandvars(target_rootfs)))
+        target_rootfs = project.resolve_from_config(app_info.default_target_rootfs)
+    else:
+        target_rootfs = BuckyProject._expand_path(target_rootfs)
     
     if check_reinstall:
         if not target_rootfs.exists():
@@ -214,7 +214,7 @@ def update_app(project:BuckyProject,app_name:str,skip_web_module:bool=False,chec
             if isinstance(module_info, WebModuleInfo):
                 continue
 
-        src_path = Path(project.base_dir) / app_info.rootfs / module_path
+        src_path = project.resolve_from_base_dir(app_info.rootfs) / module_path
         target_path = target_rootfs / module_path
         
         if not module_path.endswith("/"):
@@ -240,9 +240,9 @@ def clean_app(project:BuckyProject,app_name:str,target_rootfs:Optional[Path]=Non
         raise ValueError(f"App {app_name} not found")
 
     if target_rootfs is None:
-        target_rootfs = app_info.default_target_rootfs
-    
-    target_rootfs = Path(os.path.expanduser(os.path.expandvars(target_rootfs)))
+        target_rootfs = project.resolve_from_config(app_info.default_target_rootfs)
+    else:
+        target_rootfs = BuckyProject._expand_path(target_rootfs)
 
     print(f"🧹 Cleaning app {app_name} from {target_rootfs}")
     for clean_path in app_info.clean_paths:
@@ -261,15 +261,14 @@ def install_app_data(project:BuckyProject,app_name:str,target_rootfs:Optional[Pa
         raise ValueError(f"App {app_name} not found")
 
     if target_rootfs is None:
-        target_rootfs = app_info.default_target_rootfs
-    
-    # Expand ~ and environment variables in path
-    target_rootfs = Path(os.path.expanduser(os.path.expandvars(target_rootfs)))
+        target_rootfs = project.resolve_from_config(app_info.default_target_rootfs)
+    else:
+        target_rootfs = BuckyProject._expand_path(target_rootfs)
 
     print(f"📋 Installing data for app {app_name} to {target_rootfs}")
 
     for data_path in app_info.data_paths:
-        src_path = Path(project.base_dir) / app_info.rootfs / data_path
+        src_path = project.resolve_from_base_dir(app_info.rootfs) / data_path
         target_path = target_rootfs / data_path
         if target_path.exists():
             print(f"⏭️ {target_path} already exists, keep user data.")

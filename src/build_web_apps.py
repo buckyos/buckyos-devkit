@@ -47,7 +47,7 @@ def build_web_module(project: BuckyProject, module_name: str):
         raise ValueError(f"Web module {module_name} not found")
 
     print(f'* Building web module {module_name} at {module_info.src_dir} ...')
-    work_dir = os.path.join(project.base_dir, module_info.src_dir)
+    work_dir = project.resolve_from_base_dir(module_info.src_dir)
     package_json = os.path.join(work_dir, 'package.json')
     
     # Detect GitHub dependencies

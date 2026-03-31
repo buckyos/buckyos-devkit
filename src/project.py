@@ -99,6 +99,7 @@ class BuckyProject:
     name: str
     version: str
     base_dir: Path = field(default_factory=Path.cwd)
+    config_dir: Optional[Path] = None
     modules: Dict[str, WebModuleInfo | RustModuleInfo] = field(default_factory=dict)
     apps: Dict[str, AppInfo] = field(default_factory=dict)
 
@@ -107,6 +108,11 @@ class BuckyProject:
     
     def __post_init__(self):
         """Initialize fields that depend on other fields"""
+        self.base_dir = Path(self.base_dir)
+        if self.config_dir is None:
+            self.config_dir = self.base_dir
+        else:
+            self.config_dir = Path(self.config_dir)
         if self.rust_target_dir is None:
             self.rust_target_dir = Path(_temp_dir) / "rust_build" / self.name
 
@@ -121,6 +127,22 @@ class BuckyProject:
         if module in self.modules:
             raise ValueError(f"Rust module {module} already exists")
         self.modules[module] = info
+
+    @staticmethod
+    def _expand_path(path: str | Path) -> Path:
+        return Path(os.path.expanduser(os.path.expandvars(os.fspath(path))))
+
+    def resolve_from_config(self, path: str | Path) -> Path:
+        path_obj = self._expand_path(path)
+        if path_obj.is_absolute():
+            return path_obj
+        return self.config_dir / path_obj
+
+    def resolve_from_base_dir(self, path: str | Path) -> Path:
+        path_obj = self._expand_path(path)
+        if path_obj.is_absolute():
+            return path_obj
+        return self.base_dir / path_obj
     
     @classmethod
     def from_file(cls, config_file: str | Path) -> 'BuckyProject':
@@ -163,7 +185,7 @@ class BuckyProject:
             }
         }
         """
-        config_file = Path(config_file)
+        config_file = Path(config_file).expanduser().resolve()
         
         if not config_file.exists():
             raise FileNotFoundError(f"Config file not found: {config_file}")
@@ -194,14 +216,21 @@ class BuckyProject:
         
         Args:
             data: Configuration data dictionary
-            base_dir: Base directory, used if not specified in data
+            base_dir: Config file directory, used if not specified in data
         """
+        config_dir = Path.cwd() if base_dir is None else cls._expand_path(base_dir)
+        if not config_dir.is_absolute():
+            config_dir = Path.cwd() / config_dir
+        config_dir = config_dir.resolve()
+
         # Handle base directory
         if 'base_dir' in data:
-            base_dir = Path(data['base_dir'])
-        elif base_dir is None:
-            base_dir = Path.cwd()
-        
+            project_base_dir = cls._expand_path(data['base_dir'])
+            if not project_base_dir.is_absolute():
+                project_base_dir = config_dir / project_base_dir
+        else:
+            project_base_dir = config_dir
+
         # Parse modules
         modules: Dict[str, WebModuleInfo | RustModuleInfo] = {}
         for module_name, module_data in data.get('modules', {}).items():
@@ -222,7 +251,8 @@ class BuckyProject:
         project = cls(
             name=data['name'],
             version=data.get('version', '0.1.0'),
-            base_dir=base_dir,
+            base_dir=project_base_dir,
+            config_dir=config_dir,
             modules=modules,
             apps=apps,
             rust_env=data.get('rust_env', {})
@@ -230,8 +260,8 @@ class BuckyProject:
         
         # Handle rust_target_dir
         if 'rust_target_dir' in data:
-            project.rust_target_dir = Path(data['rust_target_dir'])
-        
+            project.rust_target_dir = project.resolve_from_config(data['rust_target_dir'])
+
         return project
     
     def to_dict(self) -> Dict[str, Any]:

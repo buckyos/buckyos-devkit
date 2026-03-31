@@ -35,6 +35,35 @@ class ProjectConfigDiscoveryTest(unittest.TestCase):
             self.assertIsNotNone(found_path)
             self.assertEqual(found_path.resolve(), config_path.resolve())
 
+    def test_relative_paths_follow_config_file_directory(self):
+        with tempfile.TemporaryDirectory() as tmp_dir, tempfile.TemporaryDirectory() as other_dir:
+            config_dir = Path(tmp_dir) / 'nested'
+            config_dir.mkdir(parents=True)
+            config_path = config_dir / 'bucky_project.json'
+            config_path.write_text(
+                '{"name":"demo","version":"0.1.0","base_dir":".","rust_target_dir":"target","modules":{"frontend":{"type":"web","name":"frontend","src_dir":"web/frontend"}},"apps":{"demo":{"name":"demo","rootfs":"rootfs/demo","default_target_rootfs":"deploy/demo","modules":{},"data_paths":[],"clean_paths":[]}}}',
+                encoding='utf-8'
+            )
+
+            original_cwd = Path.cwd()
+            try:
+                os.chdir(other_dir)
+                project = BuckyProject.from_file(config_path)
+            finally:
+                os.chdir(original_cwd)
+
+            self.assertEqual(project.base_dir.resolve(), config_dir.resolve())
+            self.assertEqual(project.config_dir.resolve(), config_dir.resolve())
+            self.assertEqual(project.rust_target_dir.resolve(), (config_dir / 'target').resolve())
+            self.assertEqual(
+                project.resolve_from_base_dir(project.modules['frontend'].src_dir).resolve(),
+                (config_dir / 'web' / 'frontend').resolve()
+            )
+            self.assertEqual(
+                project.resolve_from_config(project.apps['demo'].default_target_rootfs).resolve(),
+                (config_dir / 'deploy' / 'demo').resolve()
+            )
+
 
 if __name__ == '__main__':
     unittest.main()

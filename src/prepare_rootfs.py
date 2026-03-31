@@ -31,19 +31,20 @@ def copy_rust_module(project: BuckyProject, module_name: str, rust_target: Optio
         if rust_target:
             cross_compile_env_vars = get_cross_compile_env_vars_by_target(rust_target)
             use_target_subdir = cross_compile_env_vars is not None
-        
+
+        rust_target_dir = project.resolve_from_config(project.rust_target_dir)
         if use_target_subdir:
-            src_file = os.path.join(project.base_dir, project.rust_target_dir, rust_target, "release", module_name)
+            src_file = rust_target_dir / rust_target / "release" / module_name
         else:
-            src_file = os.path.join(project.base_dir, project.rust_target_dir, "release", module_name)
+            src_file = rust_target_dir / "release" / module_name
         src_file = get_execute_name(src_file)
         
         # 目标路径：rootfs/module_path/module_name
         
         if not module_path.endswith("/"):
-            real_target: Path = Path(project.base_dir) / app_info.rootfs / module_path
+            real_target: Path = project.resolve_from_base_dir(app_info.rootfs) / module_path
         else:
-            real_target: Path = Path(project.base_dir) / app_info.rootfs / module_path / module_name
+            real_target: Path = project.resolve_from_base_dir(app_info.rootfs) / module_path / module_name
 
         os.makedirs(real_target.parent, exist_ok=True)
         real_target = get_execute_name(real_target)
@@ -61,7 +62,7 @@ def copy_web_module(project: BuckyProject, module_name: str):
     if not isinstance(module_info, WebModuleInfo):
         raise ValueError(f"Web module {module_name} is not a WebModuleInfo")
 
-    dist_dir = os.path.join(project.base_dir, module_info.src_dir, "dist")
+    dist_dir = project.resolve_from_base_dir(module_info.src_dir) / "dist"
 
     for app_info in project.apps.values():
         if module_name not in app_info.modules:
@@ -69,7 +70,7 @@ def copy_web_module(project: BuckyProject, module_name: str):
         module_path = app_info.modules[module_name]
         
         print(f'* Copying web module to app {app_info.name}...')
-        real_target_dir = os.path.join(project.base_dir, app_info.rootfs, module_path)
+        real_target_dir = project.resolve_from_base_dir(app_info.rootfs) / module_path
         
         # 如果目标目录存在，先删除
         if os.path.exists(real_target_dir):
