@@ -5,7 +5,7 @@ import platform
 from typing import Optional
 from .project import WebModuleInfo, RustModuleInfo, BuckyProject
 from .buckyos_kit import get_execute_name
-from .build_rust import get_cross_compile_env_vars_by_target
+from .build_rust import is_cross_compile_target
 
 _system_name = platform.system()
 
@@ -29,8 +29,7 @@ def copy_rust_module(project: BuckyProject, module_name: str, rust_target: Optio
         # 否则放在 {target_dir}/release/
         use_target_subdir = False
         if rust_target:
-            cross_compile_env_vars = get_cross_compile_env_vars_by_target(rust_target)
-            use_target_subdir = cross_compile_env_vars is not None
+            use_target_subdir = is_cross_compile_target(rust_target)
 
         rust_target_dir = project.resolve_from_config(project.rust_target_dir)
         if use_target_subdir:

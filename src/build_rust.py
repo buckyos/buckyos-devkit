@@ -11,10 +11,15 @@ from typing import Optional,Dict
 
 from .project import BuckyProject, RustModuleInfo
 
+_MUSL_TOOL_ENV_SUFFIXES = {
+    "CC": "gcc",
+    "CXX": "g++",
+    "AR": "ar",
+    "RANLIB": "ranlib",
+}
+
 def check_musl_gcc():
-    if shutil.which('musl-gcc') is None:
-        print("Error: musl-gcc not found. Please install musl-tools.")
-        sys.exit(1)
+    _resolve_musl_toolchain("x86_64-unknown-linux-musl", get_host_target())
 
 def check_aarch64_toolchain():
     if shutil.which('aarch64-linux-gnu-gcc') is None:
@@ -149,6 +154,97 @@ def parse_rust_target(target: str) -> tuple[str, str]:
     
     return (arch, os_type)
 
+def _get_cross_compile_context(target: str) -> Optional[Dict[str, str]]:
+    host_target = get_host_target()
+
+    if target == host_target:
+        return None
+
+    host_arch, host_os = parse_rust_target(host_target)
+    target_arch, target_os = parse_rust_target(target)
+
+    if host_os == 'darwin' and target_os == 'darwin':
+        if host_arch != target_arch:
+            return {
+                "host_target": host_target,
+                "host_arch": host_arch,
+                "host_os": host_os,
+                "target_arch": target_arch,
+                "target_os": target_os,
+            }
+        return None
+
+    if host_os != target_os:
+        if host_os != 'darwin' and target_os != 'linux':
+            return None
+
+    return {
+        "host_target": host_target,
+        "host_arch": host_arch,
+        "host_os": host_os,
+        "target_arch": target_arch,
+        "target_os": target_os,
+    }
+
+def is_cross_compile_target(target: str) -> bool:
+    return _get_cross_compile_context(target) is not None
+
+def _get_musl_tool_candidates(target_arch: str, tool_suffix: str, host_arch: str) -> list[str]:
+    candidates = [f"{target_arch}-linux-musl-{tool_suffix}"]
+    if host_arch == target_arch:
+        candidates.append(f"musl-{tool_suffix}")
+    return candidates
+
+def _resolve_first_tool(candidates: list[str]) -> Optional[str]:
+    for tool in candidates:
+        if shutil.which(tool) is not None:
+            return tool
+    return None
+
+def _resolve_musl_toolchain(target: str, host_target: Optional[str] = None) -> Dict[str, str]:
+    host_target = host_target or get_host_target()
+    host_arch, _ = parse_rust_target(host_target)
+    target_arch, _ = parse_rust_target(target)
+    env_suffix = target.replace("-", "_")
+    cargo_env_suffix = target.replace("-", "_").upper()
+
+    resolved_tools: Dict[str, str] = {}
+    missing_tools: Dict[str, list[str]] = {}
+    tool_candidates: Dict[str, list[str]] = {}
+
+    for env_name, tool_suffix in _MUSL_TOOL_ENV_SUFFIXES.items():
+        candidates = _get_musl_tool_candidates(target_arch, tool_suffix, host_arch)
+        tool_candidates[env_name] = candidates
+        resolved_tool = _resolve_first_tool(candidates)
+        if resolved_tool is None:
+            missing_tools[env_name] = candidates
+        else:
+            resolved_tools[env_name] = resolved_tool
+
+    if missing_tools:
+        details = [f"Error: incomplete musl toolchain for target {target}."]
+        for env_name, candidates in missing_tools.items():
+            details.append(f"Missing {env_name}: tried {', '.join(candidates)}")
+
+        if "CXX" in missing_tools:
+            preferred_cxx = tool_candidates["CXX"][0]
+            details.append("musl-tools is only enough for pure C builds.")
+            details.append(
+                f"Crates with C++ dependencies also need `{preferred_cxx}`"
+                + (" or `musl-g++`." if host_arch == target_arch else ".")
+            )
+
+        raise RuntimeError("\n".join(details))
+
+    env_vars = {
+        f"CC_{env_suffix}": resolved_tools["CC"],
+        f"CXX_{env_suffix}": resolved_tools["CXX"],
+        f"AR_{env_suffix}": resolved_tools["AR"],
+        f"RANLIB_{env_suffix}": resolved_tools["RANLIB"],
+        f"CARGO_TARGET_{cargo_env_suffix}_LINKER": resolved_tools["CC"],
+    }
+    return env_vars
+
 def get_cross_compile_env_vars_by_target(target: str) -> Optional[Dict[str, str]]:
     """Get cross-compilation environment variables for the given Rust target
     
@@ -158,39 +254,33 @@ def get_cross_compile_env_vars_by_target(target: str) -> Optional[Dict[str, str]
     Returns:
         Dictionary of environment variables if cross-compilation is needed, None otherwise
     """
-    host_target = get_host_target()
-    
-    # If target matches host, no cross-compilation needed
-    if target == host_target:
+    cross_compile_context = _get_cross_compile_context(target)
+    if cross_compile_context is None:
         return None
-    
-    host_arch, host_os = parse_rust_target(host_target)
-    target_arch, target_os = parse_rust_target(target)
-    
-    # Special case: macOS supports building for both x86_64 and aarch64 natively
+
+    host_arch = cross_compile_context["host_arch"]
+    host_os = cross_compile_context["host_os"]
+    target_arch = cross_compile_context["target_arch"]
+    target_os = cross_compile_context["target_os"]
+
     if host_os == 'darwin' and target_os == 'darwin':
-        # macOS can cross-compile between x86_64 and aarch64 without special tools
-        if host_arch != target_arch:
-            print(f"⚠️ Cross-arch compilation on macOS from {host_arch} to {target_arch} detected.")
-            print(f"   This is supported natively by the Rust toolchain on macOS.")
-            return {"CROSS_COMPILE_MACOS": "1"}
-        else:
-            return None
-    
-    # If OS differs, cross-compilation is complex and may not be supported
-    if host_os != target_os:
-        if host_os != 'darwin' and target_os != 'linux': # only support cross-OS compilation from darwin to linux
-            print(f"⚠️ Cross-OS compilation from {host_os} to {target_os} detected.")
-            print(f"   This may require Docker or other specialized tools.")
-            return None
-    
-    # Same OS, different arch - set up cross-compilation toolchain
+        print(f"⚠️ Cross-arch compilation on macOS from {host_arch} to {target_arch} detected.")
+        print(f"   This is supported natively by the Rust toolchain on macOS.")
+        return {"CROSS_COMPILE_MACOS": "1"}
+
+    if host_os != target_os and host_os != 'darwin' and target_os != 'linux':
+        print(f"⚠️ Cross-OS compilation from {host_os} to {target_os} detected.")
+        print(f"   This may require Docker or other specialized tools.")
+        return None
+
     print(f"* Cross-compilation from {host_arch}@{host_os} to {target_arch}@{target_os} detected.")
     env_vars = {}
     
     # Linux cross-compilation configurations
     if target_os == 'linux':
-        if target_arch == 'aarch64' and host_arch == 'x86_64':
+        if 'musl' in target:
+            env_vars.update(_resolve_musl_toolchain(target, cross_compile_context["host_target"]))
+        elif target_arch == 'aarch64' and host_arch == 'x86_64':
             # x86_64 -> aarch64 Linux
             env_vars["CC_aarch64_unknown_linux_gnu"] = "aarch64-linux-gnu-gcc"
             env_vars["CXX_aarch64_unknown_linux_gnu"] = "aarch64-linux-gnu-g++"
@@ -210,15 +300,6 @@ def get_cross_compile_env_vars_by_target(target: str) -> Optional[Dict[str, str]
             env_vars["CXX_armv7_unknown_linux_gnueabihf"] = "arm-linux-gnueabihf-g++"
             env_vars["AR_armv7_unknown_linux_gnueabihf"] = "arm-linux-gnueabihf-ar"
             env_vars["CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER"] = "arm-linux-gnueabihf-gcc"
-        
-        # Handle musl targets
-        if 'musl' in target:
-            if target_arch == 'x86_64':
-                env_vars["CC_x86_64_unknown_linux_musl"] = "musl-gcc"
-                env_vars["CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER"] = "musl-gcc"
-            elif target_arch == 'aarch64':
-                env_vars["CC_aarch64_unknown_linux_musl"] = "aarch64-linux-musl-gcc"
-                env_vars["CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER"] = "aarch64-linux-musl-gcc"
     
     return env_vars
 
