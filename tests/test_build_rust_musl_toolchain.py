@@ -97,3 +97,29 @@ class BuildRustMuslToolchainTests(unittest.TestCase):
         self.assertIn("musl-tools is only enough for pure C builds.", message)
         self.assertIn("x86_64-linux-musl-g++", message)
         self.assertIn("musl-g++", message)
+
+    def test_apply_darwin_linux_cross_compile_env_sets_bindgen_and_cxxflags(self):
+        env = {
+            "CC_x86_64_unknown_linux_musl": "x86_64-linux-musl-gcc",
+            "CXX_x86_64_unknown_linux_musl": "x86_64-linux-musl-g++",
+            "BINDGEN_EXTRA_CLANG_ARGS": "--existing",
+            "CXXFLAGS": "-O2",
+        }
+        with patch.object(
+            build_rust,
+            "_bindgen_args_for_linux_target",
+            return_value=["--target=x86_64-unknown-linux-musl", "--sysroot=/opt/cross/sysroot"],
+        ):
+            with patch.object(build_rust, "_toolchain_has_linux_headers", return_value=True):
+                build_rust._apply_darwin_linux_cross_compile_env(env, "x86_64-unknown-linux-musl")
+
+        self.assertEqual(
+            env["BINDGEN_EXTRA_CLANG_ARGS"],
+            "--existing --target=x86_64-unknown-linux-musl --sysroot=/opt/cross/sysroot",
+        )
+        self.assertEqual(
+            env["BINDGEN_EXTRA_CLANG_ARGS_x86_64_unknown_linux_musl"],
+            "--target=x86_64-unknown-linux-musl --sysroot=/opt/cross/sysroot",
+        )
+        self.assertEqual(env["CXXFLAGS"], "-O2 -include cstdint")
+        self.assertEqual(env["CXXFLAGS_x86_64_unknown_linux_musl"], "-include cstdint")

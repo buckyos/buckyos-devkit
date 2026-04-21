@@ -1,5 +1,6 @@
 
 import os
+import shlex
 import tempfile
 import sys
 import subprocess
@@ -245,6 +246,104 @@ def _resolve_musl_toolchain(target: str, host_target: Optional[str] = None) -> D
     }
     return env_vars
 
+def _with_extra_clang_arg(current: Optional[str], extra_arg: str) -> str:
+    if current is None or current.strip() == "":
+        return extra_arg
+    if extra_arg in current:
+        return current
+    return f"{current} {extra_arg}"
+
+def _compiler_include_args(compiler: str) -> list[str]:
+    result = subprocess.run(
+        [compiler, "-E", "-Wp,-v", "-x", "c", "-"],
+        input="",
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    lines = result.stderr.splitlines()
+    include_args: list[str] = []
+    in_block = False
+    for raw_line in lines:
+        line = raw_line.rstrip()
+        if "#include <...> search starts here:" in line:
+            in_block = True
+            continue
+        if in_block and line.strip() == "End of search list.":
+            break
+        if in_block:
+            path = line.strip()
+            if path:
+                include_args.extend(["-isystem", path])
+    return include_args
+
+def _bindgen_args_for_linux_target(target: str, compiler: str) -> list[str]:
+    args = [f"--target={target}"]
+    sysroot = subprocess.run(
+        [compiler, "-print-sysroot"],
+        check=False,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    if sysroot:
+        args.append(f"--sysroot={sysroot}")
+
+    args.extend(_compiler_include_args(compiler))
+    return args
+
+def _toolchain_has_linux_headers(compiler: str) -> bool:
+    result = subprocess.run(
+        [compiler, "-E", "-x", "c++", "-"],
+        input="#include <linux/fs.h>\n",
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    return result.returncode == 0
+
+def _apply_darwin_linux_cross_compile_env(env: Dict[str, str], target: str) -> None:
+    target_suffix = target.replace("-", "_")
+    cross_cc = env.get(f"CC_{target_suffix}")
+    cross_cxx = env.get(f"CXX_{target_suffix}")
+
+    if cross_cxx:
+        env[f"CXXFLAGS_{target_suffix}"] = _with_extra_clang_arg(
+            env.get(f"CXXFLAGS_{target_suffix}"),
+            "-include cstdint",
+        )
+        env["CXXFLAGS"] = _with_extra_clang_arg(
+            env.get("CXXFLAGS"),
+            "-include cstdint",
+        )
+
+    if cross_cc:
+        bindgen_args = _bindgen_args_for_linux_target(target, cross_cc)
+        if bindgen_args:
+            bindgen_args_text = shlex.join(bindgen_args)
+            env["BINDGEN_EXTRA_CLANG_ARGS"] = _with_extra_clang_arg(
+                env.get("BINDGEN_EXTRA_CLANG_ARGS"),
+                bindgen_args_text,
+            )
+            env[f"BINDGEN_EXTRA_CLANG_ARGS_{target_suffix}"] = bindgen_args_text
+            print(
+                f"* Using cross clang args for bindgen target {target}: {bindgen_args_text}",
+                flush=True,
+            )
+
+    if cross_cxx and not _toolchain_has_linux_headers(cross_cxx):
+        print(
+            f"⚠️ {cross_cxx} cannot find Linux kernel headers such as linux/fs.h.",
+            flush=True,
+        )
+        print(
+            "   klog/rocksdb will fail to compile until the Linux cross toolchain includes kernel headers.",
+            flush=True,
+        )
+        print(
+            "   A complete macOS cross toolchain such as messense/homebrew-macos-cross-toolchains is recommended.",
+            flush=True,
+        )
+
 def get_cross_compile_env_vars_by_target(target: str) -> Optional[Dict[str, str]]:
     """Get cross-compilation environment variables for the given Rust target
     
@@ -339,6 +438,13 @@ def build_rust_modules(project: BuckyProject, rust_target: str, selected_modules
     if cross_compile_env_vars:
         print("⚠️ cross compile enabled for target: ", rust_target)
         env.update(cross_compile_env_vars)
+        cross_compile_context = _get_cross_compile_context(rust_target)
+        if (
+            cross_compile_context is not None
+            and cross_compile_context["host_os"] == "darwin"
+            and cross_compile_context["target_os"] == "linux"
+        ):
+            _apply_darwin_linux_cross_compile_env(env, rust_target)
         cargo_args_with_target = cargo_args[:]
         cargo_args_with_target.insert(3, rust_target)
         cargo_args_with_target.insert(3, "--target")
