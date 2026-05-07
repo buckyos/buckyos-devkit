@@ -132,6 +132,41 @@ class BuckyProject:
     def _expand_path(path: str | Path) -> Path:
         return Path(os.path.expanduser(os.path.expandvars(os.fspath(path))))
 
+    @staticmethod
+    def _load_config_data(config_file: str | Path) -> Dict[str, Any]:
+        config_file = Path(config_file).expanduser().resolve()
+
+        if not config_file.exists():
+            raise FileNotFoundError(f"Config file not found: {config_file}")
+
+        suffix = config_file.suffix.lower()
+
+        if suffix == '.json':
+            with open(config_file, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        elif suffix in ['.yaml', '.yml']:
+            try:
+                import yaml
+                with open(config_file, 'r', encoding='utf-8') as f:
+                    data = yaml.safe_load(f)
+                return {} if data is None else data
+            except ImportError:
+                raise ImportError(
+                    "PyYAML is required to load YAML files: pip install pyyaml"
+                )
+        else:
+            raise ValueError(f"Unsupported config file format: {suffix}, only .json, .yaml, .yml are supported")
+
+    @staticmethod
+    def _deep_merge_dicts(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
+        merged = dict(base)
+        for key, value in override.items():
+            if isinstance(value, dict) and isinstance(merged.get(key), dict):
+                merged[key] = BuckyProject._deep_merge_dicts(merged[key], value)
+            else:
+                merged[key] = value
+        return merged
+
     def resolve_from_config(self, path: str | Path) -> Path:
         path_obj = self._expand_path(path)
         if path_obj.is_absolute():
@@ -145,7 +180,7 @@ class BuckyProject:
         return self.base_dir / path_obj
     
     @classmethod
-    def from_file(cls, config_file: str | Path) -> 'BuckyProject':
+    def from_file(cls, config_file: str | Path, overlay_files: Optional[List[str | Path]] = None) -> 'BuckyProject':
         """Load project configuration from file
         
         Supports JSON and YAML formats.
@@ -186,27 +221,10 @@ class BuckyProject:
         }
         """
         config_file = Path(config_file).expanduser().resolve()
-        
-        if not config_file.exists():
-            raise FileNotFoundError(f"Config file not found: {config_file}")
-        
-        # Select parser based on file extension
-        suffix = config_file.suffix.lower()
-        
-        if suffix == '.json':
-            with open(config_file, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-        elif suffix in ['.yaml', '.yml']:
-            try:
-                import yaml
-                with open(config_file, 'r', encoding='utf-8') as f:
-                    data = yaml.safe_load(f)
-            except ImportError:
-                raise ImportError(
-                    "PyYAML is required to load YAML files: pip install pyyaml"
-                )
-        else:
-            raise ValueError(f"Unsupported config file format: {suffix}, only .json, .yaml, .yml are supported")
+        data = cls._load_config_data(config_file)
+        for overlay_file in overlay_files or []:
+            overlay_data = cls._load_config_data(overlay_file)
+            data = cls._deep_merge_dicts(data, overlay_data)
         
         return cls.from_dict(data, config_file.parent)
     
@@ -331,4 +349,24 @@ class BuckyProject:
                 path = search_dir / name
                 if path.exists():
                     return path
+        return None
+
+    @classmethod
+    def get_project_local_config_file(cls, config_file: str | Path) -> Optional[Path]:
+        """Get the optional user-local project configuration file."""
+        env_path = os.environ.get("BUCKYOS_PROJECT_LOCAL_CONFIG")
+        if env_path:
+            path = cls._expand_path(env_path)
+            if not path.is_absolute():
+                path = Path.cwd() / path
+            path = path.resolve()
+            if not path.exists():
+                raise FileNotFoundError(f"Local config file not found: {path}")
+            return path
+
+        config_dir = Path(config_file).expanduser().resolve().parent
+        for name in ['bucky_project.local.json', 'bucky_project.local.yaml', 'bucky_project.local.yml']:
+            path = config_dir / name
+            if path.exists():
+                return path
         return None
