@@ -134,6 +134,24 @@ rust_env:
 | `rust_target_dir` | string | ❌ | Rust 构建输出目录 |
 | `rust_env` | object | ❌ | Rust 编译环境变量 |
 
+### 用户本地覆盖配置
+
+`buckyos-build` 和 `buckyos-install` 会先加载团队共享的 `bucky_project.json` / `bucky_project.yaml` / `bucky_project.yml`，再自动查找同目录下的本地覆盖文件：
+
+- `bucky_project.local.json`
+- `bucky_project.local.yaml`
+- `bucky_project.local.yml`
+
+本地覆盖文件只需要写个人要调整的字段，例如：
+
+```yaml
+rust_target_dir: /tmp/buckyos-rust-build
+rust_env:
+  RUSTFLAGS: "-C target-feature=+crt-static"
+```
+
+覆盖规则是字典深合并，所以这里的 `rust_env` 会和主配置里的 `rust_env` 合并；同名 key 以本地配置为准。也可以通过 `BUCKYOS_PROJECT_LOCAL_CONFIG=/path/to/local.yaml` 指定本地覆盖文件。
+
 ### Web 模块字段
 
 | 字段 | 类型 | 必填 | 说明 |

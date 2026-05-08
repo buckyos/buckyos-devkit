@@ -195,7 +195,12 @@ def build_main():
         sys.exit(1)
     
     print(f"Loading project configuration from: {config_file}")
-    bucky_project = BuckyProject.from_file(config_file)
+    local_config_file = BuckyProject.get_project_local_config_file(config_file)
+    overlay_files = []
+    if local_config_file is not None:
+        print(f"Loading local project configuration from: {local_config_file}")
+        overlay_files.append(local_config_file)
+    bucky_project = BuckyProject.from_file(config_file, overlay_files)
 
     if selected_modules is None and select_mode:
         selected_modules = _prompt_select_modules(bucky_project, skip_web_module)

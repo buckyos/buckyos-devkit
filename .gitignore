@@ -207,3 +207,8 @@ marimo/_lsp/
 __marimo__/
 test_project/rootfs/demo_app/bin/daemon/test_daemon
 test_project/bucky_project_test_output.json
+
+# BuckyOS DevKit user-local project overrides
+bucky_project.local.json
+bucky_project.local.yaml
+bucky_project.local.yml

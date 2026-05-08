@@ -64,6 +64,60 @@ class ProjectConfigDiscoveryTest(unittest.TestCase):
                 (config_dir / 'deploy' / 'demo').resolve()
             )
 
+    def test_local_config_overrides_shared_config(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            config_dir = Path(tmp_dir)
+            config_path = config_dir / 'bucky_project.yaml'
+            local_config_path = config_dir / 'bucky_project.local.yaml'
+            config_path.write_text(
+                '\n'.join([
+                    'name: demo',
+                    'version: 0.1.0',
+                    'base_dir: .',
+                    'rust_target_dir: shared-target',
+                    'rust_env:',
+                    '  RUSTFLAGS: shared',
+                    '  SHARED: keep',
+                    'modules:',
+                    '  frontend:',
+                    '    type: web',
+                    '    name: frontend',
+                    '    src_dir: web/frontend',
+                    'apps: {}',
+                ]),
+                encoding='utf-8',
+            )
+            local_config_path.write_text(
+                '\n'.join([
+                    'rust_target_dir: local-target',
+                    'rust_env:',
+                    '  RUSTFLAGS: local',
+                    '  LOCAL_ONLY: local-value',
+                ]),
+                encoding='utf-8',
+            )
+
+            project = BuckyProject.from_file(config_path, [local_config_path])
+
+            self.assertEqual(project.name, 'demo')
+            self.assertIn('frontend', project.modules)
+            self.assertEqual(project.rust_target_dir.resolve(), (config_dir / 'local-target').resolve())
+            self.assertEqual(project.rust_env['RUSTFLAGS'], 'local')
+            self.assertEqual(project.rust_env['SHARED'], 'keep')
+            self.assertEqual(project.rust_env['LOCAL_ONLY'], 'local-value')
+
+    def test_finds_local_config_next_to_shared_config(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            config_dir = Path(tmp_dir)
+            config_path = config_dir / 'bucky_project.yaml'
+            local_config_path = config_dir / 'bucky_project.local.yaml'
+            config_path.write_text('name: demo\n', encoding='utf-8')
+            local_config_path.write_text('rust_target_dir: local-target\n', encoding='utf-8')
+
+            found_path = BuckyProject.get_project_local_config_file(config_path)
+
+            self.assertEqual(found_path.resolve(), local_config_path.resolve())
+
 
 if __name__ == '__main__':
     unittest.main()
