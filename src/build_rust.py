@@ -402,7 +402,12 @@ def get_cross_compile_env_vars_by_target(target: str) -> Optional[Dict[str, str]
     
     return env_vars
 
-def build_rust_modules(project: BuckyProject, rust_target: str, selected_modules: list[str] | None = None):
+def build_rust_modules(
+    project: BuckyProject,
+    rust_target: str,
+    selected_modules: list[str] | None = None,
+    timing: bool = False,
+):
     print(f"🚀 Building Rust code,target_dir is {project.rust_target_dir},target is {rust_target}")
     env = os.environ.copy()
     build_env = get_build_metadata(str(project.base_dir))
@@ -419,6 +424,8 @@ def build_rust_modules(project: BuckyProject, rust_target: str, selected_modules
     
     cross_compile_env_vars = get_cross_compile_env_vars_by_target(rust_target)
     cargo_args = ["cargo", "build", "--release", "--target-dir", str(project.rust_target_dir)]
+    if timing:
+        cargo_args.append("--timings")
     if selected_modules is not None:
         rust_modules = [
             module_name
