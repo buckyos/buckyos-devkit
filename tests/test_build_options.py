@@ -53,7 +53,7 @@ class BuildAppOptionTests(unittest.TestCase):
             build._collect_app_modules(self.make_project(), ["missing-app"])
 
 
-class BuildRustTimingTests(unittest.TestCase):
+class BuildRustTimingsTests(unittest.TestCase):
     def test_build_rust_modules_adds_cargo_timings_flag(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             project = BuckyProject(
@@ -76,7 +76,7 @@ class BuildRustTimingTests(unittest.TestCase):
                     project,
                     "x86_64-unknown-linux-gnu",
                     selected_modules=["daemon"],
-                    timing=True,
+                    timings=True,
                 )
 
         cargo_args = run_mock.call_args.args[0]
@@ -84,6 +84,40 @@ class BuildRustTimingTests(unittest.TestCase):
         self.assertEqual(cargo_args.count("-p"), 1)
         self.assertIn("daemon", cargo_args)
         self.assertNotIn("frontend", cargo_args)
+
+    def test_build_rust_modules_copies_new_timings_report(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project = BuckyProject(
+                name="test-project",
+                version="0.1.0",
+                base_dir=Path(tmp_dir),
+                modules={
+                    "daemon": RustModuleInfo(name="daemon"),
+                },
+            )
+            project.rust_target_dir = Path(tmp_dir) / "target"
+            output_dir = Path(tmp_dir) / "timings-output"
+
+            def make_timing_report(*args, **kwargs):
+                report_dir = project.rust_target_dir / "cargo-timings"
+                report_dir.mkdir(parents=True, exist_ok=True)
+                (report_dir / "cargo-timing-test.html").write_text("<html></html>", encoding="utf-8")
+
+            with patch.object(build_rust, "get_build_metadata", return_value={}), patch.object(
+                build_rust, "get_env_vars_by_target", return_value={}
+            ), patch.object(build_rust, "get_cross_compile_env_vars_by_target", return_value=None), patch.object(
+                build_rust.subprocess, "run", side_effect=make_timing_report
+            ) as run_mock:
+                build_rust.build_rust_modules(
+                    project,
+                    "x86_64-unknown-linux-gnu",
+                    selected_modules=["daemon"],
+                    timings_dir=output_dir,
+                )
+
+            cargo_args = run_mock.call_args.args[0]
+            self.assertIn("--timings", cargo_args)
+            self.assertTrue((output_dir / "cargo-timing-test.html").exists())
 
 
 if __name__ == "__main__":

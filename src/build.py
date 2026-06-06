@@ -1,5 +1,6 @@
 import sys
 import platform
+from pathlib import Path
 from typing import Optional
 
 from .build_web_apps import build_web_modules
@@ -166,16 +167,21 @@ def build(
     rust_target: str,
     skip_web_module: bool,
     selected_modules: set[str] | None = None,
-    timing: bool = False,
+    timings: bool = False,
+    timings_dir: Path | None = None,
 ):
     if not skip_web_module:
         build_web_modules(project, None if selected_modules is None else list(selected_modules))
-    build_rust_modules(project, rust_target, None if selected_modules is None else list(selected_modules), timing)
+    build_rust_modules(
+        project,
+        rust_target,
+        None if selected_modules is None else list(selected_modules),
+        timings,
+        timings_dir,
+    )
     copy_build_results(project, skip_web_module, rust_target, None if selected_modules is None else list(selected_modules))
 
 def build_main():
-    from pathlib import Path
-    
     skip_web_module = False
     system = platform.system() # Linux / Windows / Darwin
     arch = platform.machine() # x86_64 / AMD64 / arm64 / arm
@@ -184,7 +190,8 @@ def build_main():
     select_mode = False
     selected_modules = None
     app_names: list[str] = []
-    timing = False
+    timings = False
+    timings_dir: Path | None = None
     if system == "Linux" and (arch == "x86_64" or arch == "AMD64"):
         target = "x86_64-unknown-linux-musl"
     elif system == "Windows" and (arch == "x86_64" or arch == "AMD64"):
@@ -202,8 +209,25 @@ def build_main():
             skip_web_module = True
             i += 1
             continue
-        if arg == "--timing":
-            timing = True
+        if arg == "--timings":
+            timings = True
+            i += 1
+            continue
+        if arg == "--timings-dir":
+            if i + 1 >= len(args) or args[i + 1].startswith("-"):
+                print("Error: --timings-dir requires a directory")
+                sys.exit(1)
+            timings = True
+            timings_dir = Path(args[i + 1])
+            i += 2
+            continue
+        if arg.startswith("--timings-dir="):
+            value = arg.split("=", 1)[1]
+            if not value:
+                print("Error: --timings-dir requires a directory")
+                sys.exit(1)
+            timings = True
+            timings_dir = Path(value)
             i += 1
             continue
         if arg == "--app":
@@ -300,7 +324,7 @@ def build_main():
         print(f"Selected modules from --app: {', '.join(sorted(selected_modules))}")
 
     print(f"Rust target is : {target}")
-    build(bucky_project, target, skip_web_module, selected_modules, timing)
+    build(bucky_project, target, skip_web_module, selected_modules, timings, timings_dir)
     
 if __name__ == "__main__":
     build_main()

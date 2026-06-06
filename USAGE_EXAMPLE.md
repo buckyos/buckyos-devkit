@@ -47,8 +47,11 @@ buckyos-build --app demo_app
 # 支持同时指定多个 app
 buckyos-build --app demo_app admin_app
 
-# 生成 Cargo timing 报告
-buckyos-build --timing
+# 生成 Cargo timings 报告
+buckyos-build --timings
+
+# 生成并复制 Cargo timings 报告到指定目录
+buckyos-build --timings-dir ./timings
 
 # 构建 amd64 版本
 buckyos-build amd64
