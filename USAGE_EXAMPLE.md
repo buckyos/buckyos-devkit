@@ -41,6 +41,18 @@ buckyos-build --no-install
 # 指定目标平台
 buckyos-build --target=x86_64-unknown-linux-musl
 
+# 只构建指定 app 使用的模块
+buckyos-build --app demo_app
+
+# 支持同时指定多个 app
+buckyos-build --app demo_app admin_app
+
+# 生成 Cargo timings 报告
+buckyos-build --timings
+
+# 生成并复制 Cargo timings 报告到指定目录
+buckyos-build --timings-dir ./timings
+
 # 构建 amd64 版本
 buckyos-build amd64
 

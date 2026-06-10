@@ -45,6 +45,10 @@ buckyos-build --help
 buckyos-build --no-build-web-modules  # 跳过 web modules 构建
 buckyos-build --no-install            # 不安装
 buckyos-build --target=x86_64-unknown-linux-musl  # 指定目标
+buckyos-build --app demo_app          # 只构建指定 app 使用的模块
+buckyos-build --app app1 app2         # 同时构建多个 app 使用的模块
+buckyos-build --timings               # 生成 Cargo timings 报告
+buckyos-build --timings-dir ./timings # 生成并复制 Cargo timings 报告
 ```
 
 ### 2. `buckyos-install` - 安装工具

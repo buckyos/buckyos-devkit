@@ -1,5 +1,6 @@
 import sys
 import platform
+from pathlib import Path
 from typing import Optional
 
 from .build_web_apps import build_web_modules
@@ -100,9 +101,15 @@ def _prompt_select_modules_interactive(selectable: list[tuple[str, str]]) -> set
     }
     return selected
 
-def _prompt_select_modules(project: BuckyProject, skip_web_module: bool) -> set[str]:
+def _prompt_select_modules(
+    project: BuckyProject,
+    skip_web_module: bool,
+    selectable_modules: set[str] | None = None,
+) -> set[str]:
     selectable = []
     for module_name, module_info in project.modules.items():
+        if selectable_modules is not None and module_name not in selectable_modules:
+            continue
         if skip_web_module and isinstance(module_info, WebModuleInfo):
             continue
         if isinstance(module_info, WebModuleInfo):
@@ -124,15 +131,57 @@ def _prompt_select_modules(project: BuckyProject, skip_web_module: bool) -> set[
 
     return _prompt_select_modules_line(selectable)
 
-def build(project: BuckyProject, rust_target: str, skip_web_module: bool, selected_modules: set[str] | None = None):
+def _split_option_values(value: str) -> list[str]:
+    return [item for item in value.replace(",", " ").split() if item]
+
+def _collect_app_modules(project: BuckyProject, app_names: list[str]) -> set[str]:
+    selected_modules: set[str] = set()
+    missing_apps = []
+    skipped_modules: set[str] = set()
+
+    for app_name in app_names:
+        app_info = project.apps.get(app_name)
+        if app_info is None:
+            missing_apps.append(app_name)
+            continue
+
+        for module_name in app_info.modules.keys():
+            if module_name in project.modules:
+                selected_modules.add(module_name)
+            else:
+                skipped_modules.add(module_name)
+
+    if missing_apps:
+        raise ValueError(f"App not found in bucky_project.apps: {', '.join(sorted(missing_apps))}")
+
+    if skipped_modules:
+        print(
+            "Warning: app modules not found in bucky_project.modules, skipped: "
+            + ", ".join(sorted(skipped_modules))
+        )
+
+    return selected_modules
+
+def build(
+    project: BuckyProject,
+    rust_target: str,
+    skip_web_module: bool,
+    selected_modules: set[str] | None = None,
+    timings: bool = False,
+    timings_dir: Path | None = None,
+):
     if not skip_web_module:
         build_web_modules(project, None if selected_modules is None else list(selected_modules))
-    build_rust_modules(project, rust_target, None if selected_modules is None else list(selected_modules))
+    build_rust_modules(
+        project,
+        rust_target,
+        None if selected_modules is None else list(selected_modules),
+        timings,
+        timings_dir,
+    )
     copy_build_results(project, skip_web_module, rust_target, None if selected_modules is None else list(selected_modules))
 
 def build_main():
-    from pathlib import Path
-    
     skip_web_module = False
     system = platform.system() # Linux / Windows / Darwin
     arch = platform.machine() # x86_64 / AMD64 / arm64 / arm
@@ -140,6 +189,9 @@ def build_main():
     target = ""
     select_mode = False
     selected_modules = None
+    app_names: list[str] = []
+    timings = False
+    timings_dir: Path | None = None
     if system == "Linux" and (arch == "x86_64" or arch == "AMD64"):
         target = "x86_64-unknown-linux-musl"
     elif system == "Windows" and (arch == "x86_64" or arch == "AMD64"):
@@ -155,6 +207,47 @@ def build_main():
         arg = args[i]
         if arg == "--skip-web":
             skip_web_module = True
+            i += 1
+            continue
+        if arg == "--timings":
+            timings = True
+            i += 1
+            continue
+        if arg == "--timings-dir":
+            if i + 1 >= len(args) or args[i + 1].startswith("-"):
+                print("Error: --timings-dir requires a directory")
+                sys.exit(1)
+            timings = True
+            timings_dir = Path(args[i + 1])
+            i += 2
+            continue
+        if arg.startswith("--timings-dir="):
+            value = arg.split("=", 1)[1]
+            if not value:
+                print("Error: --timings-dir requires a directory")
+                sys.exit(1)
+            timings = True
+            timings_dir = Path(value)
+            i += 1
+            continue
+        if arg == "--app":
+            apps = []
+            j = i + 1
+            while j < len(args) and not args[j].startswith("-"):
+                apps.extend(_split_option_values(args[j]))
+                j += 1
+            if not apps:
+                print("Error: --app requires at least one app name")
+                sys.exit(1)
+            app_names.extend(apps)
+            i = j
+            continue
+        if arg.startswith("--app="):
+            apps = _split_option_values(arg.split("=", 1)[1])
+            if not apps:
+                print("Error: --app requires at least one app name")
+                sys.exit(1)
+            app_names.extend(apps)
             i += 1
             continue
         if arg == "--select" or arg == "-s":
@@ -202,14 +295,36 @@ def build_main():
         overlay_files.append(local_config_file)
     bucky_project = BuckyProject.from_file(config_file, overlay_files)
 
+    app_selected_modules = None
+    if app_names:
+        try:
+            app_selected_modules = _collect_app_modules(bucky_project, app_names)
+        except ValueError as e:
+            print(f"Error: {e}")
+            sys.exit(1)
+
+        if not app_selected_modules:
+            print("No modules selected by --app; build skipped.")
+            return
+
     if selected_modules is None and select_mode:
-        selected_modules = _prompt_select_modules(bucky_project, skip_web_module)
+        selected_modules = _prompt_select_modules(bucky_project, skip_web_module, app_selected_modules)
         if not selected_modules:
             print("No modules selected; build skipped.")
             return
 
+    if app_selected_modules is not None:
+        if selected_modules is None:
+            selected_modules = app_selected_modules
+        else:
+            selected_modules = selected_modules.intersection(app_selected_modules)
+            if not selected_modules:
+                print("No modules selected after applying --app filter; build skipped.")
+                return
+        print(f"Selected modules from --app: {', '.join(sorted(selected_modules))}")
+
     print(f"Rust target is : {target}")
-    build(bucky_project, target, skip_web_module, selected_modules)
+    build(bucky_project, target, skip_web_module, selected_modules, timings, timings_dir)
     
 if __name__ == "__main__":
     build_main()

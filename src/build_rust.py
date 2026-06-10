@@ -8,6 +8,7 @@ import platform
 import shutil
 import re
 from datetime import datetime
+from pathlib import Path
 from typing import Optional,Dict
 
 from .project import BuckyProject, RustModuleInfo
@@ -402,7 +403,53 @@ def get_cross_compile_env_vars_by_target(target: str) -> Optional[Dict[str, str]
     
     return env_vars
 
-def build_rust_modules(project: BuckyProject, rust_target: str, selected_modules: list[str] | None = None):
+def _resolve_rust_target_dir(project: BuckyProject) -> Path:
+    target_dir = Path(project.rust_target_dir)
+    if target_dir.is_absolute():
+        return target_dir
+    return project.resolve_from_base_dir(target_dir)
+
+def _get_timing_reports(target_dir: Path) -> list[Path]:
+    cargo_timings_dir = target_dir / "cargo-timings"
+    if not cargo_timings_dir.exists():
+        return []
+    return sorted(
+        cargo_timings_dir.glob("cargo-timing*.html"),
+        key=lambda path: path.stat().st_mtime_ns,
+    )
+
+def _resolve_timings_output_dir(project: BuckyProject, timings_dir: str | Path) -> Path:
+    output_dir = Path(os.path.expanduser(os.path.expandvars(os.fspath(timings_dir))))
+    if output_dir.is_absolute():
+        return output_dir
+    return project.resolve_from_base_dir(output_dir)
+
+def _copy_timing_reports(
+    project: BuckyProject,
+    target_dir: Path,
+    timings_dir: str | Path,
+    previous_reports: list[Path],
+) -> None:
+    previous_report_set = set(previous_reports)
+    reports = [path for path in _get_timing_reports(target_dir) if path not in previous_report_set]
+    if not reports:
+        print(f"Warning: no new Cargo timings report found under {target_dir / 'cargo-timings'}")
+        return
+
+    output_dir = _resolve_timings_output_dir(project, timings_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    for report in reports:
+        target_file = output_dir / report.name
+        shutil.copy2(report, target_file)
+        print(f"Copied Cargo timings report: {report} => {target_file}")
+
+def build_rust_modules(
+    project: BuckyProject,
+    rust_target: str,
+    selected_modules: list[str] | None = None,
+    timings: bool = False,
+    timings_dir: str | Path | None = None,
+):
     print(f"🚀 Building Rust code,target_dir is {project.rust_target_dir},target is {rust_target}")
     env = os.environ.copy()
     build_env = get_build_metadata(str(project.base_dir))
@@ -417,8 +464,14 @@ def build_rust_modules(project: BuckyProject, rust_target: str, selected_modules
     env_vars = get_env_vars_by_target(rust_target)
     env.update(env_vars)
     
+    target_dir = _resolve_rust_target_dir(project)
+    timings = timings or timings_dir is not None
+    previous_timing_reports = _get_timing_reports(target_dir) if timings_dir is not None else []
+
     cross_compile_env_vars = get_cross_compile_env_vars_by_target(rust_target)
-    cargo_args = ["cargo", "build", "--release", "--target-dir", str(project.rust_target_dir)]
+    cargo_args = ["cargo", "build", "--release", "--target-dir", str(target_dir)]
+    if timings:
+        cargo_args.append("--timings")
     if selected_modules is not None:
         rust_modules = [
             module_name
@@ -456,9 +509,12 @@ def build_rust_modules(project: BuckyProject, rust_target: str, selected_modules
     else:
         print("*", " ".join(cargo_args))
         subprocess.run(cargo_args,
-                    check=True, 
-                    cwd=project.base_dir, 
+                    check=True,
+                    cwd=project.base_dir,
                     env=env)
+
+    if timings_dir is not None:
+        _copy_timing_reports(project, target_dir, timings_dir, previous_timing_reports)
 
     print(f'✅ Build Rust Modules completed')
 
