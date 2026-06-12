@@ -8,6 +8,39 @@ from .build_rust import build_rust_modules
 from .project import BuckyProject, WebModuleInfo, RustModuleInfo
 from .prepare_rootfs import copy_build_results
 
+
+BUILD_HELP = """usage: buckyos-build [-h] [--skip-web] [--timings] [--timings-dir DIR]
+                    [--app APP [APP ...]] [--select [MODULE ...]]
+                    [--target=TARGET] [amd64|aarch64]
+
+Build BuckyOS project modules.
+
+positional arguments:
+  amd64                 Build for x86_64-unknown-linux-musl
+  aarch64               Build for aarch64-unknown-linux-musl
+
+options:
+  -h, --help            Show this help message and exit
+  --skip-web            Skip web module builds
+  --timings             Generate Cargo timings reports for Rust modules
+  --timings-dir DIR     Generate Cargo timings reports and copy them to DIR
+  --app APP [APP ...]   Build only modules used by the specified app(s);
+                        app names may also be comma-separated
+  -s, --select [MODULE ...]
+                        Select modules to build; omit MODULE to choose
+                        interactively when a terminal is available
+  --target=TARGET       Override the Rust target triple
+"""
+
+
+def _has_help_arg(args: list[str]) -> bool:
+    return any(arg in ("-h", "--help") for arg in args)
+
+
+def _print_build_help() -> None:
+    print(BUILD_HELP)
+
+
 def _prompt_select_modules_line(selectable: list[tuple[str, str]]) -> set[str]:
     print("Select modules to build (answer y to include):")
     selected = set()
@@ -181,8 +214,13 @@ def build(
     )
     copy_build_results(project, skip_web_module, rust_target, None if selected_modules is None else list(selected_modules))
 
-def build_main():
+def build_main(argv: list[str] | None = None):
     skip_web_module = False
+    args = sys.argv[1:] if argv is None else list(argv)
+    if _has_help_arg(args):
+        _print_build_help()
+        return
+
     system = platform.system() # Linux / Windows / Darwin
     arch = platform.machine() # x86_64 / AMD64 / arm64 / arm
     print(f"DEBUG: system:{system},arch:{arch}")
@@ -201,7 +239,6 @@ def build_main():
     elif system == "Darwin" and (arch == "arm64" or arch == "arm"):
         target = "aarch64-apple-darwin"
 
-    args = sys.argv[1:]
     i = 0
     while i < len(args):
         arg = args[i]

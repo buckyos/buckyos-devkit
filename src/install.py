@@ -10,8 +10,7 @@ from .project import AppInfo, BuckyProject, WebModuleInfo
 
 src_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 
-buckyos_root = get_buckyos_root();
-print(f"buckyos_root: {buckyos_root}")
+buckyos_root = get_buckyos_root()
 
 pre_install_apps = [
     {
@@ -294,17 +293,48 @@ def reinstall_app(bucky_project:BuckyProject, app_name:str, skip_web_module:bool
     update_app(bucky_project, app_name, skip_web_module, check_reinstall=False, target_rootfs=target_rootfs)
     print(f"✅ Reinstalling app {app_name} OK")
 
+INSTALL_HELP = """usage: {prog} [-h] [--all] [reinstall] [--app=APP]
+                 [--skip-web] [--target-rootfs=DIR]
 
-def install_main():
-    skip_web_module: bool = "--skip-web" in sys.argv
+Install or update BuckyOS project apps.
+
+positional arguments:
+  reinstall             Reinstall apps instead of updating changed files
+
+options:
+  -h, --help            Show this help message and exit
+  --all                 Reinstall all apps
+  --app=APP             Limit the operation to one app
+  --skip-web            Skip web modules while updating app files
+  --target-rootfs=DIR   Override the target rootfs directory
+"""
+
+
+def _has_help_arg(args: list[str]) -> bool:
+    return any(arg in ("-h", "--help") for arg in args)
+
+
+def _print_install_help(prog: str) -> None:
+    print(INSTALL_HELP.format(prog=prog))
+
+
+def install_main(argv: list[str] | None = None):
+    args = sys.argv[1:] if argv is None else list(argv)
+    if _has_help_arg(args):
+        prog = Path(sys.argv[0]).name if argv is None else "buckyos-install"
+        _print_install_help(prog)
+        return
+
+    print(f"buckyos_root: {buckyos_root}")
+    skip_web_module: bool = "--skip-web" in args
     target_rootfs: Optional[Path] = None
-    for arg in sys.argv:
+    for arg in args:
         if arg.startswith("--target-rootfs="):
             target_rootfs = Path(arg.split("=")[1])
-    install_all: bool = "--all" in sys.argv or "reinstall" in sys.argv
+    install_all: bool = "--all" in args or "reinstall" in args
     app_name : Optional[str] = None
     skip_web_module: bool = False
-    for arg in sys.argv:
+    for arg in args:
         if arg.startswith("--app="):
             app_name = arg.split("=")[1]
         if arg.startswith("--skip-web"):
