@@ -2,6 +2,7 @@ import contextlib
 import importlib
 import io
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 build = importlib.import_module("src.build")
@@ -77,6 +78,34 @@ class CliHelpTests(unittest.TestCase):
                     remote_main.main,
                     ["dev_group", subcommand, "--help"],
                 )
+
+    def test_remote_stop_without_device_stops_all_devices(self):
+        calls = []
+        workspace = SimpleNamespace(
+            remote_devices={"sn": object(), "alice-ood1": object()},
+            stop=lambda device_id, apps=None: calls.append((device_id, apps)),
+        )
+
+        with patch.object(remote_main, "build_workspace", return_value=workspace):
+            result = remote_main.main(["dev_group", "stop"])
+
+        self.assertEqual(result, 0)
+        self.assertEqual(calls, [("sn", None), ("alice-ood1", None)])
+
+    def test_remote_stop_accepts_device_and_apps_filter(self):
+        calls = []
+        workspace = SimpleNamespace(
+            remote_devices={"sn": object(), "alice-ood1": object()},
+            stop=lambda device_id, apps=None: calls.append((device_id, apps)),
+        )
+
+        with patch.object(remote_main, "build_workspace", return_value=workspace):
+            result = remote_main.main(
+                ["dev_group", "stop", "alice-ood1", "--apps", "buckyos"]
+            )
+
+        self.assertEqual(result, 0)
+        self.assertEqual(calls, [("alice-ood1", ["buckyos"])])
 
     def test_cert_subcommands_accept_help(self):
         for subcommand in ["create_ca", "create_cert", "install_ca"]:

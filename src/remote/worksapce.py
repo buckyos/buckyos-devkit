@@ -186,6 +186,24 @@ class Workspace:
                 raise ValueError(f"App '{app_name}' not found")
             self.execute_app_command(device_id, app_name, "start")
 
+    def stop(self, device_id: str,app_list:list[str] = None):
+        # Stop apps on remote_device based on app_list configuration in workspace
+        if app_list is None:
+            app_list = self.app_list.get_all_app_names()
+        print(f"stop apps on device: {device_id} with apps: {app_list}")
+        remote_device = self.remote_devices[device_id]
+        if remote_device is None:
+            raise ValueError(f"Remote device '{device_id}' not found")
+        
+        for app_name in app_list:
+            if not self.nodes.have_app(device_id, app_name):
+                print(f"App '{app_name}' not install on {device_id}, SKIP")
+                continue
+            app_config = self.app_list.get_app(app_name)
+            if app_config is None:
+                raise ValueError(f"App '{app_name}' not found")
+            self.execute_app_command(device_id, app_name, "stop")
+
     def update(self, device_id: str,app_list:list[str] = None):
         # Update apps on remote_device based on app_list configuration in workspace
         # 

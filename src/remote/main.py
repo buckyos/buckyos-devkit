@@ -109,6 +109,17 @@ def build_parser() -> argparse.ArgumentParser:
     stop_parser = subparsers.add_parser(
         "stop", help="Stop buckyos on all VMs."
     )
+    stop_parser.add_argument(
+        "device_id",
+        nargs="?",
+        default=None,
+        help="Target device id; omit to stop all devices.",
+    )
+    stop_parser.add_argument(
+        "--apps",
+        nargs="+",
+        help="Specify app names to stop; defaults to all configured apps.",
+    )
     stop_parser.set_defaults(handler=handle_stop)
 
     clog_parser = subparsers.add_parser(
@@ -273,7 +284,12 @@ def handle_exec_app(workspace: Workspace, args: argparse.Namespace) -> None:
 
 
 def handle_stop(workspace: Workspace, args: argparse.Namespace) -> None:
-    workspace.stop()
+    print(f"stop apps on device: {args.device_id} with apps: {args.apps}")
+    if args.device_id is None:
+        for device_id in workspace.remote_devices.keys():
+            workspace.stop(device_id, args.apps)
+        return
+    workspace.stop(args.device_id, args.apps)
 
 
 def handle_clog(workspace: Workspace, args: argparse.Namespace) -> None:
