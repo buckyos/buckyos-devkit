@@ -486,7 +486,7 @@ def build_rust_modules(
             return
 
         for module_name in rust_modules:
-            cargo_args.extend(["-p", module_name])
+            cargo_args.extend(["-p", project.modules[module_name].name])
 
     if cross_compile_env_vars:
         print("⚠️ cross compile enabled for target: ", rust_target)
