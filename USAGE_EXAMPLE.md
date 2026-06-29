@@ -158,6 +158,9 @@ buckyos-remote <group_name> start
 # 停止 buckyos
 buckyos-remote <group_name> stop
 
+# 卸载应用
+buckyos-remote <group_name> uninstall <device_id> --apps app1 app2
+
 # 收集日志
 buckyos-remote <group_name> clog
 

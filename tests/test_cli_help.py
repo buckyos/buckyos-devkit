@@ -68,6 +68,7 @@ class CliHelpTests(unittest.TestCase):
             "update",
             "start",
             "stop",
+            "uninstall",
             "clog",
             "run",
             "exec",
@@ -102,6 +103,34 @@ class CliHelpTests(unittest.TestCase):
         with patch.object(remote_main, "build_workspace", return_value=workspace):
             result = remote_main.main(
                 ["dev_group", "stop", "alice-ood1", "--apps", "buckyos"]
+            )
+
+        self.assertEqual(result, 0)
+        self.assertEqual(calls, [("alice-ood1", ["buckyos"])])
+
+    def test_remote_uninstall_without_device_uninstalls_all_devices(self):
+        calls = []
+        workspace = SimpleNamespace(
+            remote_devices={"sn": object(), "alice-ood1": object()},
+            uninstall=lambda device_id, apps=None: calls.append((device_id, apps)),
+        )
+
+        with patch.object(remote_main, "build_workspace", return_value=workspace):
+            result = remote_main.main(["dev_group", "uninstall"])
+
+        self.assertEqual(result, 0)
+        self.assertEqual(calls, [("sn", None), ("alice-ood1", None)])
+
+    def test_remote_uninstall_accepts_device_and_apps_filter(self):
+        calls = []
+        workspace = SimpleNamespace(
+            remote_devices={"sn": object(), "alice-ood1": object()},
+            uninstall=lambda device_id, apps=None: calls.append((device_id, apps)),
+        )
+
+        with patch.object(remote_main, "build_workspace", return_value=workspace):
+            result = remote_main.main(
+                ["dev_group", "uninstall", "alice-ood1", "--apps", "buckyos"]
             )
 
         self.assertEqual(result, 0)

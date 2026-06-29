@@ -122,6 +122,22 @@ def build_parser() -> argparse.ArgumentParser:
     )
     stop_parser.set_defaults(handler=handle_stop)
 
+    uninstall_parser = subparsers.add_parser(
+        "uninstall", help="Uninstall apps from a device based on configuration."
+    )
+    uninstall_parser.add_argument(
+        "device_id",
+        nargs="?",
+        default=None,
+        help="Target device id; omit to uninstall from all devices.",
+    )
+    uninstall_parser.add_argument(
+        "--apps",
+        nargs="+",
+        help="Specify app names to uninstall; defaults to all configured apps.",
+    )
+    uninstall_parser.set_defaults(handler=handle_uninstall)
+
     clog_parser = subparsers.add_parser(
         "clog", help="Collect logs from nodes."
     )
@@ -290,6 +306,15 @@ def handle_stop(workspace: Workspace, args: argparse.Namespace) -> None:
             workspace.stop(device_id, args.apps)
         return
     workspace.stop(args.device_id, args.apps)
+
+
+def handle_uninstall(workspace: Workspace, args: argparse.Namespace) -> None:
+    print(f"uninstall apps on device: {args.device_id} with apps: {args.apps}")
+    if args.device_id is None:
+        for device_id in workspace.remote_devices.keys():
+            workspace.uninstall(device_id, args.apps)
+        return
+    workspace.uninstall(args.device_id, args.apps)
 
 
 def handle_clog(workspace: Workspace, args: argparse.Namespace) -> None:

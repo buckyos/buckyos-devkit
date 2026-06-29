@@ -71,6 +71,7 @@ buckyos-remote --help
 buckyos-remote dev_group create_vms
 buckyos-remote dev_group info_vms
 buckyos-remote dev_group install device1 --apps app1 app2
+buckyos-remote dev_group uninstall device1 --apps app1 app2
 ```
 
 ## 💻 在 Python 代码中使用

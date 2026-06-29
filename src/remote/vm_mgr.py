@@ -6,6 +6,7 @@ from pathlib import Path
 import subprocess
 import abc
 import os
+import shlex
 import sys
 import json
 import re
@@ -485,9 +486,22 @@ class MultipassVMBackend(VMBackend):
     def push_dir(self, vm_name: str, local_dir: str, remote_dir: str) -> bool:
         """Recursively push directory (multipass transfer -r)"""
         try:
-            # Ensure remote target directory exists
-            self.exec_command(vm_name, f"mkdir -p {remote_dir}")
-            # Use "<local_dir>/." to only copy directory contents, avoiding extra top-level directory on remote
+            quoted_remote_dir = shlex.quote(remote_dir)
+            ready_marker = "__BUCKYOS_REMOTE_DIR_READY__"
+            stdout, stderr = self.exec_command(
+                vm_name,
+                (
+                    f"sudo mkdir -p {quoted_remote_dir} && "
+                    f"sudo chown -R $(id -u):$(id -g) {quoted_remote_dir} && "
+                    f"test -d {quoted_remote_dir} && "
+                    f"test -w {quoted_remote_dir} && "
+                    f"echo {ready_marker}"
+                ),
+            )
+            if stdout is None or ready_marker not in stdout:
+                if stderr:
+                    print(f"Failed to prepare remote directory {vm_name}:{remote_dir}: {stderr}")
+                return False
             src_dir = os.path.join(local_dir, ".")
             return self.push_file(vm_name, src_dir, remote_dir, recursive=True)
         except Exception as e:
@@ -603,4 +617,3 @@ class VMManager:
     def is_vm_exists(self, vm_name: str) -> bool:
         """Check if virtual machine exists"""
         return self.backend.is_vm_exists(vm_name)
-
