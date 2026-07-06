@@ -241,8 +241,9 @@ from pathlib import Path
 from buckyos_devkit.remote.worksapce import Workspace
 
 # 创建工作空间
-workspace_dir = Path("/path/to/workspace")
-workspace = Workspace(workspace_dir)
+base_dir = Path("/path/to/repo/src")
+workspace_dir = base_dir / "dev_configs"
+workspace = Workspace("dev_group", workspace_dir, base_dir)
 workspace.load()
 
 # 创建虚拟机
@@ -269,12 +270,33 @@ workspace.stop()
 
 ## 配置文件
 
-远程管理工具需要在 `src/remote/dev_configs/<group_name>/` 目录下配置：
+远程管理工具默认从当前运行目录的 `dev_configs/` 读取配置：
 
-- `nodes.json`: 节点配置
-- `vm_config.json`: 虚拟机配置  
-- `apps/`: 应用配置目录
+- `<group_name>.json`: VM 拓扑、节点参数、每个节点启用的 app
+- `apps/*.json`: 本仓库维护的 app build/install/update/start/stop/uninstall 配置
 - `templates/`: 模板配置目录
+
+`<group_name>.json` 可以通过顶层 `app_configs` 显式引用外部 app config 文件，适合 sibling repo 维护 app 部署逻辑的场景：
+
+```json
+{
+  "app_configs": {
+    "web3-gateway": "../../cyfs-gateway/src/dev_configs/apps/web3-gateway.json"
+  },
+  "nodes": {
+    "sn": {
+      "apps": {
+        "web3-gateway": {
+          "node_group_name": "sn_server"
+        }
+      }
+    }
+  },
+  "instance_order": ["sn"]
+}
+```
+
+`app_configs` 的相对路径按 `Workspace.base_dir` 解析，通常就是运行 `buckyos-devtest` 的 `<repo>/src`。`nodes.*.apps` 只放 app instance params，不放 app config path。
 
 ## 注意事项
 

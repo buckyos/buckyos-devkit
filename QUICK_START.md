@@ -74,6 +74,27 @@ buckyos-remote dev_group install device1 --apps app1 app2
 buckyos-remote dev_group uninstall device1 --apps app1 app2
 ```
 
+`buckyos-devtest`/`buckyos-remote` 会从当前目录的 `dev_configs/<group>.json` 加载 VM 拓扑，并从 `dev_configs/apps/*.json` 加载本地 app 配置。需要引用 sibling repo 中维护的 app 配置时，可以在 group 配置顶层加入 `app_configs`：
+
+```json
+{
+  "app_configs": {
+    "web3-gateway": "../../cyfs-gateway/src/dev_configs/apps/web3-gateway.json"
+  },
+  "nodes": {
+    "sn": {
+      "apps": {
+        "web3-gateway": {
+          "node_group_name": "sn_server"
+        }
+      }
+    }
+  }
+}
+```
+
+`app_configs` 的相对路径按 `Workspace.base_dir` 解析，通常是运行命令的 `<repo>/src`；`nodes.*.apps` 继续只保存实例参数。
+
 ## 💻 在 Python 代码中使用
 
 ```python

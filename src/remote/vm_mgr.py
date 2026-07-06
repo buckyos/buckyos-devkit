@@ -34,6 +34,7 @@ class VMNodeList:
     def __init__(self):
         self.nodes : dict [str, VMConfig]= None
         self.instance_order : list[str] = None
+        self.app_configs : dict[str, str] = {}
     def get_node(self, node_id: str) -> VMConfig:
         return self.nodes.get(node_id)
     
@@ -61,6 +62,14 @@ class VMNodeList:
             data = json.load(f)
 
         self.nodes = {}
+        self.app_configs = data.get("app_configs", {})
+        if not isinstance(self.app_configs, dict):
+            raise ValueError(f"'app_configs' in {file_path} must be an object")
+        for app_name, config_path in self.app_configs.items():
+            if not isinstance(app_name, str) or not isinstance(config_path, str):
+                raise ValueError(
+                    f"'app_configs' in {file_path} must map app names to config path strings"
+                )
         self.instance_order = data.get("instance_order", [])
 
         for node_id, cfg in data.get("nodes", {}).items():

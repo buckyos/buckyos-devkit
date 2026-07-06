@@ -113,6 +113,40 @@ cat target/release/test_daemon
 
 ---
 
+### ✅ 第四步：测试 devtest 外部 app config
+
+```bash
+pytest tests/test_remote_app_list.py tests/test_remote_workspace_external_app_configs.py
+```
+
+**验证点：**
+- [x] 老模式 `dev_configs/apps/*.json` 不需要修改即可加载
+- [x] group 配置顶层 `app_configs` 可以引用外部 app config
+- [x] `app_configs` 相对路径按 `Workspace.base_dir` 解析，通常是运行 `buckyos-devtest` 的 `<repo>/src`
+- [x] 本地 app config 与外部显式配置同名时，外部配置覆盖本地配置并打印 warning
+- [x] `nodes.*.apps` 只保存 instance params，不保存 app config path
+
+示例：
+
+```json
+{
+  "app_configs": {
+    "web3-gateway": "../../cyfs-gateway/src/dev_configs/apps/web3-gateway.json"
+  },
+  "nodes": {
+    "sn": {
+      "apps": {
+        "web3-gateway": {
+          "node_group_name": "sn_server"
+        }
+      }
+    }
+  }
+}
+```
+
+---
+
 ## 🔧 真实环境测试（需要实际的 BuckyOS 项目）
 
 如果你有一个真实的 BuckyOS 项目，可以这样测试：
@@ -247,4 +281,3 @@ ls -ld rootfs/demo_app/
 - 可以修改 `test_project/bucky_project.json` 来测试不同的配置
 - 模拟测试不需要安装 Rust 或 Node.js 环境
 - 真实测试需要完整的开发环境
-

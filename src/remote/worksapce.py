@@ -47,6 +47,7 @@ class Workspace:
         app_dir = self.workspace_dir / "apps"
         self.app_list = AppList(app_dir)
         self.app_list.load_app_list()
+        self.app_list.load_external_app_configs(self.nodes.app_configs, self.base_dir)
 
         self._create_remote_devices_by_vm_instances()
 
@@ -158,14 +159,14 @@ class Workspace:
             if app_config is None:
                 raise ValueError(f"App '{app_name}' not found")
             source_dir = app_config.get_dir("source")
-            source_dir_path = Path(source_dir);
+            source_dir_path = Path(source_dir)
             if not source_dir_path.is_absolute():
                 source_dir_path = self.base_dir / source_dir_path
             target_dir = app_config.get_dir("target")
             self.execute_app_command(device_id, app_name, "build_all",True)
             
             # Push files from Host Source directory to remote_device target directory based on directory settings
-            remote_device.push(source_dir, target_dir)
+            remote_device.push(str(source_dir_path), target_dir)
             self.execute_app_command(device_id, app_name, "install")
 
     def start(self, device_id: str,app_list:list[str] = None):
@@ -245,14 +246,14 @@ class Workspace:
             if source_bin_dir is None:
                 print(f"App '{app_name}' not found source_bin_dir, SKIP update")
                 continue
-            source_bin_dir_path = Path(source_bin_dir);
+            source_bin_dir_path = Path(source_bin_dir)
             if not source_bin_dir_path.is_absolute():
                 source_bin_dir_path = self.base_dir / source_bin_dir_path
             target_bin_dir = app_config.get_dir("target_bin")
             self.execute_app_command(device_id, app_name, "build",True)
             
             # Push files from Host Source directory to remote_device target directory based on directory settings
-            remote_device.push(source_bin_dir, target_bin_dir)
+            remote_device.push(str(source_bin_dir_path), target_bin_dir)
             self.execute_app_command(device_id, app_name, "update")
 
     def execute_app_command(self, device_id: Optional[str],app_name: str,cmd_name: str ,run_in_host: bool = False):
