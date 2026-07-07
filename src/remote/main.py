@@ -323,7 +323,11 @@ def handle_clog(workspace: Workspace, args: argparse.Namespace) -> None:
 
 def handle_run(workspace: Workspace, args: argparse.Namespace) -> None:
     env_params = workspace.build_env_params()
-    workspace.run(args.node_id, args.cmds, env_params)
+    try:
+        workspace.run(args.node_id, args.cmds, env_params, check=True)
+    except RuntimeError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
 def main(argv: list[str] | None = None) -> int:

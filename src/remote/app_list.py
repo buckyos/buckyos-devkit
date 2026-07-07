@@ -8,8 +8,13 @@ class AppConfig:
         self.commands : dict [str, list[str]]= None
         self.directories : dict [str, str] = None
         self.version : str = None
+        # Directory containing the config file; exposed to commands as
+        # {{app.dir}} so external app configs (living in another repo) can
+        # reference their own repo layout instead of the devtest cwd.
+        self.config_dir : Path = None
 
     def load_from_file(self, file_path: Path):
+        self.config_dir = Path(file_path).resolve().parent
         with open(file_path, 'r') as f:
             app_config = json.load(f)
         app_name = app_config.get("name")

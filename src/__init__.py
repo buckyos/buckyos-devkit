@@ -4,7 +4,7 @@ BuckyOS DevKit - Shared development script library for BuckyOS
 Contains tools for building, installation, remote management, etc.
 """
 
-__version__ = "0.1.26"
+__version__ = "0.1.27"
 
 # Import core components for external use
 from .cert_mgr import CertManager

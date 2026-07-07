@@ -271,7 +271,9 @@ class Workspace:
         app_config = self.app_list.get_app(app_name)
         if app_config is None:
             raise ValueError(f"App '{app_name}' not found")
-        
+        if app_config.config_dir is not None:
+            env_params["app"] = {"dir": str(app_config.config_dir)}
+
         command_config = app_config.get_command(cmd_name)
         if command_config is None:
             raise ValueError(f"Command '{cmd_name}' not found")
@@ -305,7 +307,14 @@ class Workspace:
         
         return self._VARIABLE_PATTERN.sub(replace_var, text)
 
-    def run(self, device_id: Optional[str], cmds: list[str], env_params: dict):
+    def run(self, device_id: Optional[str], cmds: list[str], env_params: dict, check: bool = False):
+        """
+        Run commands on a device (or on the host when device_id is None).
+
+        With check=True a non-zero exit code (or a command that could not be
+        executed at all) raises RuntimeError, so CLI callers can propagate
+        failure to their own exit code.
+        """
         remote_device = None
         if device_id is not None:
             remote_device = self.remote_devices[device_id]
@@ -318,9 +327,18 @@ class Workspace:
             new_command = self.resolve_string(command, env_params)
             print(f"run resolved command: [ {new_command} ] on {device_id}")
             if remote_device is None:
-                os.system(new_command)
+                exit_code = os.system(new_command)
+                returncode = os.waitstatus_to_exitcode(exit_code) if os.name == "posix" else exit_code
             else:
-                remote_device.run_command(new_command)
+                stdout, stderr, returncode = remote_device.run_command(new_command)
+                if stdout:
+                    print(stdout, end="" if stdout.endswith("\n") else "\n")
+                if stderr:
+                    print(stderr, end="" if stderr.endswith("\n") else "\n", file=sys.stderr)
+            if check and returncode != 0:
+                raise RuntimeError(
+                    f"command [ {new_command} ] on {device_id} exited with {returncode}"
+                )
 
     def state(self,device_id: str):
         # View app status on remote_devices based on app_list configuration in workspace (actually viewed by executing actions)

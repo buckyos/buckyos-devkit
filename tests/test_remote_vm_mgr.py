@@ -12,7 +12,7 @@ class MultipassPushDirTests(unittest.TestCase):
         with patch.object(
             backend,
             "exec_command",
-            return_value=("__BUCKYOS_REMOTE_DIR_READY__\n", ""),
+            return_value=("__BUCKYOS_REMOTE_DIR_READY__\n", "", 0),
         ) as exec_mock, patch.object(backend, "push_file", return_value=True) as push_mock:
             result = backend.push_dir("sn", "/opt/web3-gateway", "/opt/web3-gateway")
 
@@ -34,7 +34,7 @@ class MultipassPushDirTests(unittest.TestCase):
         with patch.object(
             backend,
             "exec_command",
-            return_value=("", "permission denied"),
+            return_value=("", "permission denied", 1),
         ), patch.object(backend, "push_file") as push_mock:
             result = backend.push_dir("sn", "/opt/web3-gateway", "/opt/web3-gateway")
 

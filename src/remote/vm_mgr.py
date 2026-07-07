@@ -120,13 +120,14 @@ class VMBackend(abc.ABC):
     def exec_command(self, vm_name: str, command: str) -> tuple:
         """
         Execute command in virtual machine
-        
+
         Args:
             vm_name: Virtual machine name
             command: Command to execute
-        
+
         Returns:
-            tuple: (stdout, stderr)
+            tuple: (stdout, stderr, returncode); returncode is None when the
+            command could not be executed at all (timeout, backend error)
         """
         pass
     
@@ -304,11 +305,11 @@ class MultipassVMBackend(VMBackend):
                 text=True,
                 timeout=300
             )
-            return result.stdout, result.stderr
+            return result.stdout, result.stderr, result.returncode
         except subprocess.TimeoutExpired:
-            return None, "Command execution timed out"
+            return None, "Command execution timed out", None
         except Exception as e:
-            return None, str(e)
+            return None, str(e), None
     
     def push_file(self, vm_name: str, local_path: str, remote_path: str, recursive: bool = False) -> bool:
         """Push file using multipass transfer"""
@@ -497,7 +498,7 @@ class MultipassVMBackend(VMBackend):
         try:
             quoted_remote_dir = shlex.quote(remote_dir)
             ready_marker = "__BUCKYOS_REMOTE_DIR_READY__"
-            stdout, stderr = self.exec_command(
+            stdout, stderr, _ = self.exec_command(
                 vm_name,
                 (
                     f"sudo mkdir -p {quoted_remote_dir} && "
@@ -600,7 +601,7 @@ class VMManager:
         return self.backend.start_vm(node_id)
     
     def exec_command(self, vm_name: str, command: str) -> tuple:
-        """Execute command in virtual machine"""
+        """Execute command in virtual machine, returns (stdout, stderr, returncode)"""
         return self.backend.exec_command(vm_name, command)
     
     def push_file(self, vm_name: str, local_path: str, remote_path: str, recursive: bool = False) -> bool:

@@ -113,14 +113,33 @@ class CliHelpTests(unittest.TestCase):
         env_params = {"system": {"base_dir": "/tmp/devkit"}}
         workspace = SimpleNamespace(
             build_env_params=lambda: env_params,
-            run=lambda device_id, cmds, params: calls.append((device_id, cmds, params)),
+            run=lambda device_id, cmds, params, check=False: calls.append(
+                (device_id, cmds, params, check)
+            ),
         )
 
         with patch.object(remote_main, "build_workspace", return_value=workspace):
             result = remote_main.main(["dev_group", "run", "sn", "echo {{system.base_dir}}"])
 
         self.assertEqual(result, 0)
-        self.assertEqual(calls, [("sn", ["echo {{system.base_dir}}"], env_params)])
+        self.assertEqual(calls, [("sn", ["echo {{system.base_dir}}"], env_params, True)])
+
+    def test_remote_run_propagates_command_failure_as_exit_code(self):
+        env_params = {"system": {"base_dir": "/tmp/devkit"}}
+
+        def failing_run(device_id, cmds, params, check=False):
+            raise RuntimeError("command [ false ] on sn exited with 1")
+
+        workspace = SimpleNamespace(
+            build_env_params=lambda: env_params,
+            run=failing_run,
+        )
+
+        with patch.object(remote_main, "build_workspace", return_value=workspace):
+            with self.assertRaises(SystemExit) as ctx:
+                remote_main.main(["dev_group", "run", "sn", "false"])
+
+        self.assertEqual(ctx.exception.code, 1)
 
     def test_remote_uninstall_without_device_uninstalls_all_devices(self):
         calls = []

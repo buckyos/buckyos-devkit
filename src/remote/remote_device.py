@@ -16,7 +16,7 @@ class RemoteDeviceInterface(Protocol):
     Implementations can be SSH-based or VM-backend based.
     """
 
-    def run_command(self, command: str) -> Tuple[str | None, str | None]:
+    def run_command(self, command: str) -> Tuple[str | None, str | None, int | None]:
         ...
 
     def push(self, local_path: str, remote_path: str, recursive: bool = False) -> None:
@@ -264,11 +264,11 @@ class RemoteDevice(RemoteDeviceInterface):
                     text=True,
                     timeout=300  # 5 minute timeout
                 )
-                return result.stdout, result.stderr
+                return result.stdout, result.stderr, result.returncode
             except subprocess.TimeoutExpired:
-                return None, "Command execution timed out"
+                return None, "Command execution timed out", None
             except Exception as e:
-                return None, str(e)
+                return None, str(e), None
 
     def get_device_info(self):
         return {
@@ -292,14 +292,15 @@ class VMRemoteDevice(RemoteDeviceInterface):
         self.vm_manager = VMManager(backend_type)
 
 
-    def _resolve_ip(self) -> str:
+    def _resolve_ip(self) -> str | None:
         ips = self.vm_manager.get_vm_ip(self.device_id)
         for ip in ips:
             if ip.startswith("10.") or  ip.startswith("192."):
                 return ip
 
-        if ips.length > 0:
+        if len(ips) > 0:
             return ips[0]
+        return None
 
 
 
@@ -345,7 +346,7 @@ class VMRemoteDevice(RemoteDeviceInterface):
     def _remote_is_dir(self, remote_path: str) -> bool:
         """Best-effort check if remote path is a directory."""
         cmd = f"if [ -d '{remote_path}' ]; then echo DIR; else echo FILE; fi"
-        stdout, stderr = self.vm_manager.exec_command(self.device_id, cmd)
+        stdout, stderr, _ = self.vm_manager.exec_command(self.device_id, cmd)
         if stdout and "DIR" in stdout:
             return True
         return False
