@@ -108,6 +108,20 @@ class CliHelpTests(unittest.TestCase):
         self.assertEqual(result, 0)
         self.assertEqual(calls, [("alice-ood1", ["buckyos"])])
 
+    def test_remote_run_passes_workspace_env_params(self):
+        calls = []
+        env_params = {"system": {"base_dir": "/tmp/devkit"}}
+        workspace = SimpleNamespace(
+            build_env_params=lambda: env_params,
+            run=lambda device_id, cmds, params: calls.append((device_id, cmds, params)),
+        )
+
+        with patch.object(remote_main, "build_workspace", return_value=workspace):
+            result = remote_main.main(["dev_group", "run", "sn", "echo {{system.base_dir}}"])
+
+        self.assertEqual(result, 0)
+        self.assertEqual(calls, [("sn", ["echo {{system.base_dir}}"], env_params)])
+
     def test_remote_uninstall_without_device_uninstalls_all_devices(self):
         calls = []
         workspace = SimpleNamespace(

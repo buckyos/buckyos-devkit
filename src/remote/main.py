@@ -322,7 +322,8 @@ def handle_clog(workspace: Workspace, args: argparse.Namespace) -> None:
 
 
 def handle_run(workspace: Workspace, args: argparse.Namespace) -> None:
-    workspace.run(args.node_id, args.cmds)
+    env_params = workspace.build_env_params()
+    workspace.run(args.node_id, args.cmds, env_params)
 
 
 def main(argv: list[str] | None = None) -> int:
