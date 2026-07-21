@@ -89,7 +89,6 @@ class Workspace:
         print(f"all nodes created, call instance_commands after 10 seconds...")
         time.sleep(10)
         env_params = self.build_env_params()
-        print(f"env_params: {env_params}")
         instance_order = self.nodes.get_node_id_by_init_orders()
 
         for node_id in instance_order:
@@ -136,9 +135,6 @@ class Workspace:
             vm_status["ip_v4"] = vm_mgr.get_vm_ip(node_id)
             info[node_id] = vm_status
 
-        env_params = self.build_env_params()
-        print(f"env_params: {env_params}")
-        
         return info
 
     def install(self, device_id: str,app_list:list[str] = None):
@@ -279,9 +275,9 @@ class Workspace:
             raise ValueError(f"Command '{cmd_name}' not found")
         
         if run_in_host:
-            self.run(None, command_config, env_params)
+            self.run(None, command_config, env_params, check=True)
         else:
-            self.run(device_id, command_config, env_params)
+            self.run(device_id, command_config, env_params, check=True)
 
     def resolve_string(self, text: str,env_params: dict) -> str:
         """

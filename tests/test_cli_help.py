@@ -1,6 +1,8 @@
 import contextlib
 import importlib
 import io
+from pathlib import Path
+import tempfile
 import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -136,10 +138,44 @@ class CliHelpTests(unittest.TestCase):
         )
 
         with patch.object(remote_main, "build_workspace", return_value=workspace):
-            with self.assertRaises(SystemExit) as ctx:
-                remote_main.main(["dev_group", "run", "sn", "false"])
+            stderr = io.StringIO()
+            with contextlib.redirect_stderr(stderr):
+                result = remote_main.main(["dev_group", "run", "sn", "false"])
 
-        self.assertEqual(ctx.exception.code, 1)
+        self.assertEqual(result, 1)
+        self.assertIn("command [ false ]", stderr.getvalue())
+
+    def test_remote_start_stops_after_first_device_failure(self):
+        calls = []
+
+        def failing_start(device_id, apps=None):
+            calls.append((device_id, apps))
+            raise RuntimeError("start failed")
+
+        workspace = SimpleNamespace(
+            remote_devices={"sn": object(), "alice-ood1": object()},
+            start=failing_start,
+        )
+
+        with patch.object(remote_main, "build_workspace", return_value=workspace):
+            stderr = io.StringIO()
+            with contextlib.redirect_stderr(stderr):
+                result = remote_main.main(["dev_group", "start"])
+
+        self.assertEqual(result, 1)
+        self.assertEqual(calls, [("sn", None)])
+        self.assertIn("start failed", stderr.getvalue())
+
+    def test_workspace_dir_resolves_src_from_repository_root(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repository_root = Path(temp_dir)
+            workspace_dir = repository_root / "src" / "dev_configs"
+            workspace_dir.mkdir(parents=True)
+            (workspace_dir / "sntest.json").write_text("{}", encoding="utf-8")
+
+            resolved = remote_main.resolve_workspace_dir("sntest", repository_root)
+
+        self.assertEqual(resolved, workspace_dir.resolve())
 
     def test_remote_uninstall_without_device_uninstalls_all_devices(self):
         calls = []

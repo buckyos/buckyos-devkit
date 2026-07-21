@@ -1,8 +1,8 @@
 import argparse
 import json
-import os
 from pathlib import Path
 import sys
+from typing import Optional
 
 from .worksapce import Workspace
 
@@ -91,7 +91,7 @@ def build_parser() -> argparse.ArgumentParser:
     update_parser.set_defaults(handler=handle_update)
 
     start_parser = subparsers.add_parser(
-        "start", help="Start buckyos on all VMs (SN not started)."
+        "start", help="Start configured apps on one or all devices."
     )
     start_parser.add_argument(
         "device_id",
@@ -177,11 +177,21 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def resolve_workspace_dir(group_name: str, base_dir: Optional[Path] = None) -> Path:
+    base_dir = (base_dir or Path.cwd()).resolve()
+    candidates = [base_dir / "dev_configs", base_dir / "src" / "dev_configs"]
+    for candidate in candidates:
+        if (candidate / f"{group_name}.json").is_file():
+            return candidate
+    checked = ", ".join(str(candidate / f"{group_name}.json") for candidate in candidates)
+    raise FileNotFoundError(f"workspace group '{group_name}' not found; checked: {checked}")
+
+
 def build_workspace(group_name: str) -> Workspace:
     """Create and load a workspace instance."""
-    workspace_dir = os.path.join(os.getcwd(), "dev_configs")
+    workspace_dir = resolve_workspace_dir(group_name)
     print(f"load workspace from {workspace_dir}/{group_name}.json ...")
-    workspace = Workspace(group_name, Path(workspace_dir))
+    workspace = Workspace(group_name, workspace_dir, workspace_dir.parent)
     workspace.load()
     return workspace
 
@@ -252,9 +262,9 @@ def handle_exec_app(workspace: Workspace, args: argparse.Namespace) -> None:
     """
     # Parse appname.cmdname format
     if "." not in args.app_cmd:
-        print(f"Error: Invalid format. Expected 'appname.cmdname', got '{args.app_cmd}'")
-        print("Example: buckyos.build_all")
-        return
+        raise ValueError(
+            f"invalid app command '{args.app_cmd}'; expected appname.cmdname"
+        )
     
     app_name, cmd_name = args.app_cmd.split(".", 1)
     device_id = args.device_id
@@ -264,15 +274,15 @@ def handle_exec_app(workspace: Workspace, args: argparse.Namespace) -> None:
         # Execute on all devices
         target_devices = list(workspace.remote_devices.keys())
         if not target_devices:
-            print("Error: No devices available in workspace.")
-            return
+            raise ValueError("no devices available in workspace")
         print(f"Executing app command: {app_name}.{cmd_name} on all devices: {target_devices}")
     else:
         # Validate device_id
         if device_id not in workspace.remote_devices:
-            print(f"Error: Device '{device_id}' not found in workspace.")
-            print(f"Available devices: {list(workspace.remote_devices.keys())}")
-            return
+            raise ValueError(
+                f"device '{device_id}' not found; available devices: "
+                f"{list(workspace.remote_devices.keys())}"
+            )
         target_devices = [device_id]
         print(f"Executing app command: {app_name}.{cmd_name} on device: {device_id}")
     
@@ -281,19 +291,9 @@ def handle_exec_app(workspace: Workspace, args: argparse.Namespace) -> None:
         # Note: Additional params are captured but not directly passed to execute_app_command
         # They could be used via environment variables in command templates if needed
     
-    # Execute the command on each target device
     for target_device_id in target_devices:
-        try:
-            print(f"\n--- Executing on device: {target_device_id} ---")
-            workspace.execute_app_command(target_device_id, app_name, cmd_name, run_in_host=False)
-        except ValueError as e:
-            print(f"Error on device {target_device_id}: {e}")
-            continue
-        except Exception as e:
-            print(f"Unexpected error on device {target_device_id}: {e}")
-            import traceback
-            traceback.print_exc()
-            continue
+        print(f"\n--- Executing on device: {target_device_id} ---")
+        workspace.execute_app_command(target_device_id, app_name, cmd_name, run_in_host=False)
 
 
 
@@ -323,25 +323,23 @@ def handle_clog(workspace: Workspace, args: argparse.Namespace) -> None:
 
 def handle_run(workspace: Workspace, args: argparse.Namespace) -> None:
     env_params = workspace.build_env_params()
-    try:
-        workspace.run(args.node_id, args.cmds, env_params, check=True)
-    except RuntimeError as e:
-        print(f"Error: {e}", file=sys.stderr)
-        sys.exit(1)
+    workspace.run(args.node_id, args.cmds, env_params, check=True)
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
 
-    workspace = build_workspace(args.group_name)
-    #workspace.execute_app_command("bob-ood1", "buckyos", "build_all",True)
-    handler = getattr(args, "handler", None)
-    if handler is None:
-        parser.print_help()
+    try:
+        workspace = build_workspace(args.group_name)
+        handler = getattr(args, "handler", None)
+        if handler is None:
+            parser.print_help()
+            return 1
+        handler(workspace, args)
+    except (FileNotFoundError, RuntimeError, ValueError) as error:
+        print(f"Error: {error}", file=sys.stderr)
         return 1
-
-    handler(workspace, args)
     return 0
 
 
