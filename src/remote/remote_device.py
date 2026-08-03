@@ -2,7 +2,7 @@ import json
 import os
 import subprocess
 import sys
-from typing import Protocol, runtime_checkable, Tuple
+from typing import Optional, Protocol, runtime_checkable, Tuple
 
 from .vm_mgr import VMManager
 
@@ -284,12 +284,15 @@ class VMRemoteDevice(RemoteDeviceInterface):
     VM backend instead of SSH.
     """
 
-    def __init__(self, vm_name: str, backend_type: str = "multipass"):
+    def __init__(self, vm_name: str, backend_type: Optional[str] = None):
         self.device_id = vm_name
         self.remote_username = "root"
         self.remote_port = 22
         # Via singleton manager, but still validate backend_type consistency
-        self.vm_manager = VMManager(backend_type)
+        self.vm_manager = (
+            VMManager(backend_type) if backend_type is not None
+            else VMManager.get_instance()
+        )
 
 
     def _resolve_ip(self) -> str | None:
