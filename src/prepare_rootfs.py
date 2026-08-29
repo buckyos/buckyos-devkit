@@ -3,7 +3,7 @@ from pathlib import Path
 import shutil
 import platform
 from typing import Optional
-from .project import WebModuleInfo, RustModuleInfo, BuckyProject
+from .project import WebModuleInfo, WebPikgModuleInfo, RustModuleInfo, BuckyProject
 from .buckyos_kit import get_execute_name
 from .build_rust import is_cross_compile_target
 
@@ -92,11 +92,15 @@ def copy_build_results(
             continue
         if isinstance(module_info, RustModuleInfo):
             copy_rust_module(project, module_name, rust_target)
+        elif isinstance(module_info, WebPikgModuleInfo):
+            continue
         elif isinstance(module_info, WebModuleInfo):
             if not skip_web_module:
                 copy_web_module(project, module_name)
         else:
-            raise ValueError(f"Module {module_name} is not a RustModuleInfo or WebModuleInfo")
+            raise ValueError(
+                f"Module {module_name} is not a RustModuleInfo, WebModuleInfo, or WebPikgModuleInfo"
+            )
 
     print("✅ Copy build result completed!")
 

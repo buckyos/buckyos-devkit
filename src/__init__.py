@@ -16,6 +16,7 @@ from .project import (
     BuckyProject,
     AppInfo,
     WebModuleInfo,
+    WebPikgModuleInfo,
     RustModuleInfo
 )
 
@@ -37,6 +38,7 @@ __all__ = [
     'BuckyProject',
     'AppInfo',
     'WebModuleInfo',
+    'WebPikgModuleInfo',
     'RustModuleInfo',
     
     # Installation

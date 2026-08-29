@@ -34,6 +34,18 @@ class WebModuleInfo:
         }
 
 @dataclass
+class WebPikgModuleInfo(WebModuleInfo):
+    type: str = "web-pikg"
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'WebPikgModuleInfo':
+        return cls(
+            name=data['name'],
+            src_dir=Path(data['src_dir']),
+            type=data.get('type', 'web-pikg')
+        )
+
+@dataclass
 class RustModuleInfo:
     name: str
     file_only: bool = False
@@ -100,7 +112,7 @@ class BuckyProject:
     version: str
     base_dir: Path = field(default_factory=Path.cwd)
     config_dir: Optional[Path] = None
-    modules: Dict[str, WebModuleInfo | RustModuleInfo] = field(default_factory=dict)
+    modules: Dict[str, WebModuleInfo | WebPikgModuleInfo | RustModuleInfo] = field(default_factory=dict)
     apps: Dict[str, AppInfo] = field(default_factory=dict)
 
     rust_target_dir: Optional[Path] = None
@@ -120,6 +132,11 @@ class BuckyProject:
         """Add a web module"""
         if module in self.modules:
             raise ValueError(f"Web module {module} already exists")
+        self.modules[module] = info
+
+    def add_web_pikg_module(self, module: str, info: WebPikgModuleInfo) -> None:
+        if module in self.modules:
+            raise ValueError(f"Web PIKG module {module} already exists")
         self.modules[module] = info
     
     def add_rust_module(self, module: str, info: RustModuleInfo) -> None:
@@ -250,11 +267,13 @@ class BuckyProject:
             project_base_dir = config_dir
 
         # Parse modules
-        modules: Dict[str, WebModuleInfo | RustModuleInfo] = {}
+        modules: Dict[str, WebModuleInfo | WebPikgModuleInfo | RustModuleInfo] = {}
         for module_name, module_data in data.get('modules', {}).items():
             module_type = module_data.get('type', 'web')
             if module_type == 'web':
                 modules[module_name] = WebModuleInfo.from_dict(module_data)
+            elif module_type == 'web-pikg':
+                modules[module_name] = WebPikgModuleInfo.from_dict(module_data)
             elif module_type == 'rust':
                 modules[module_name] = RustModuleInfo.from_dict(module_data)
             else:
@@ -287,7 +306,9 @@ class BuckyProject:
         modules_dict = {}
         for module_name, module_info in self.modules.items():
             module_dict = module_info.to_dict()
-            if isinstance(module_info, WebModuleInfo):
+            if isinstance(module_info, WebPikgModuleInfo):
+                module_dict['type'] = 'web-pikg'
+            elif isinstance(module_info, WebModuleInfo):
                 module_dict['type'] = 'web'
             elif isinstance(module_info, RustModuleInfo):
                 module_dict['type'] = 'rust'

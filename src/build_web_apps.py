@@ -2,7 +2,7 @@ import os
 import subprocess
 import json
 from typing import List
-from .project import BuckyProject, WebModuleInfo
+from .project import BuckyProject, WebModuleInfo, WebPikgModuleInfo
 
 src_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 
@@ -37,16 +37,12 @@ def get_github_dependencies(package_json_path: str) -> List[str]:
         return []
 
 
-def build_web_module(project: BuckyProject, module_name: str):
-    """Build a web module
-    
-    Automatically detects and updates GitHub dependencies while keeping other dependencies stable.
-    """
+def _build_pnpm_module(project: BuckyProject, module_name: str, module_type: str):
     module_info = project.modules[module_name]
     if not module_info:
-        raise ValueError(f"Web module {module_name} not found")
+        raise ValueError(f"{module_type} module {module_name} not found")
 
-    print(f'* Building web module {module_name} at {module_info.src_dir} ...')
+    print(f'* Building {module_type} module {module_name} at {module_info.src_dir} ...')
     work_dir = project.resolve_from_base_dir(module_info.src_dir)
     package_json = os.path.join(work_dir, 'package.json')
     
@@ -63,9 +59,22 @@ def build_web_module(project: BuckyProject, module_name: str):
     
     cmd += ' && pnpm run build'
     
-    print(f'* Build web module {module_name}:\n**\t{cmd} ')
+    print(f'* Build {module_type} module {module_name}:\n**\t{cmd} ')
     subprocess.run(cmd, shell=True, cwd=work_dir, check=True)
-    print(f'Build web module {module_name} completed')
+    print(f'Build {module_type} module {module_name} completed')
+
+
+def build_web_module(project: BuckyProject, module_name: str):
+    """Build a web module.
+
+    Automatically detects and updates GitHub dependencies while keeping other dependencies stable.
+    """
+    _build_pnpm_module(project, module_name, "web")
+
+
+def build_web_pikg_module(project: BuckyProject, module_name: str):
+    """Build a web-pikg module without applying the traditional dist copy step."""
+    _build_pnpm_module(project, module_name, "web-pikg")
 
 def build_web_modules(project: BuckyProject, selected_modules: List[str] | None = None):
     """Build web modules in the project"""
@@ -86,5 +95,27 @@ def build_web_modules(project: BuckyProject, selected_modules: List[str] | None 
         build_web_module(project, module_name)
     
     print(f'✅ Build web modules completed')
+
+
+def build_web_pikg_modules(project: BuckyProject, selected_modules: List[str] | None = None):
+    """Build web-pikg modules in the project."""
+    web_pikg_modules = [
+        module_name
+        for module_name, module_info in project.modules.items()
+        if isinstance(module_info, WebPikgModuleInfo)
+    ]
+    if selected_modules is not None:
+        selected_set = set(selected_modules)
+        web_pikg_modules = [
+            module_name for module_name in web_pikg_modules if module_name in selected_set
+        ]
+    if not web_pikg_modules:
+        return
+
+    print('🚀 Building web-pikg modules ...')
+    for module_name in web_pikg_modules:
+        build_web_pikg_module(project, module_name)
+
+    print('✅ Build web-pikg modules completed')
 
 

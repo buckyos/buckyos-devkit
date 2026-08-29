@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from src.project import AppInfo, BuckyProject, RustModuleInfo, WebModuleInfo
+from src.project import AppInfo, BuckyProject, RustModuleInfo, WebModuleInfo, WebPikgModuleInfo
 
 build = importlib.import_module("src.build")
 build_rust = importlib.import_module("src.build_rust")
@@ -18,6 +18,7 @@ class BuildAppOptionTests(unittest.TestCase):
             modules={
                 "daemon": RustModuleInfo(name="daemon"),
                 "frontend": WebModuleInfo(name="frontend", src_dir=Path("web/frontend")),
+                "web_package": WebPikgModuleInfo(name="web_package", src_dir=Path("web/package")),
                 "unused": RustModuleInfo(name="unused"),
             },
             apps={
@@ -28,6 +29,7 @@ class BuildAppOptionTests(unittest.TestCase):
                     modules={
                         "daemon": "bin",
                         "frontend": "www",
+                        "web_package": "data/cache/web-package.pikg",
                         "missing": "bin",
                     },
                 ),
@@ -46,7 +48,7 @@ class BuildAppOptionTests(unittest.TestCase):
         with patch("builtins.print"):
             selected_modules = build._collect_app_modules(self.make_project(), ["system", "tools"])
 
-        self.assertEqual(selected_modules, {"daemon", "frontend", "unused"})
+        self.assertEqual(selected_modules, {"daemon", "frontend", "web_package", "unused"})
 
     def test_collect_app_modules_rejects_unknown_app(self):
         with self.assertRaisesRegex(ValueError, "missing-app"):

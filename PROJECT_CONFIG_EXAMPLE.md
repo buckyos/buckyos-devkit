@@ -111,6 +111,11 @@ modules:
     src_dir: modules/admin
     target_dir:
       - rootfs/modules/admin
+
+  preinstall_app:
+    type: web-pikg
+    name: preinstall_app
+    src_dir: apps/preinstall_app
   
   core_daemon:
     type: rust
@@ -168,6 +173,16 @@ rust_env:
 | `type` | string | ✅ | 固定为 "rust" |
 | `name` | string | ✅ | 模块名称 |
 | `target_dir` | array | ❌ | 编译产物输出目录列表 |
+
+### Web PIKG 模块字段
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `type` | string | ✅ | 固定为 "web-pikg" |
+| `name` | string | ✅ | 模块名称 |
+| `src_dir` | string | ✅ | 源代码目录（相对于 base_dir） |
+
+`web-pikg` 和 `web` 使用相同的 pnpm 依赖安装、GitHub 依赖更新及 `pnpm run build` 流程，但不会把 `dist/` 复制到 app rootfs；模块自身的构建脚本负责生成和放置 PIKG 相关文件。
 
 ## 💡 使用场景
 

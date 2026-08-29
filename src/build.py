@@ -3,9 +3,9 @@ import platform
 from pathlib import Path
 from typing import Optional
 
-from .build_web_apps import build_web_modules
+from .build_web_apps import build_web_modules, build_web_pikg_modules
 from .build_rust import build_rust_modules
-from .project import BuckyProject, WebModuleInfo, RustModuleInfo
+from .project import BuckyProject, WebModuleInfo, WebPikgModuleInfo, RustModuleInfo
 from .prepare_rootfs import copy_build_results
 
 
@@ -145,7 +145,9 @@ def _prompt_select_modules(
             continue
         if skip_web_module and isinstance(module_info, WebModuleInfo):
             continue
-        if isinstance(module_info, WebModuleInfo):
+        if isinstance(module_info, WebPikgModuleInfo):
+            module_type = "web-pikg"
+        elif isinstance(module_info, WebModuleInfo):
             module_type = "web"
         elif isinstance(module_info, RustModuleInfo):
             module_type = "rust"
@@ -205,6 +207,7 @@ def build(
 ):
     if not skip_web_module:
         build_web_modules(project, None if selected_modules is None else list(selected_modules))
+        build_web_pikg_modules(project, None if selected_modules is None else list(selected_modules))
     build_rust_modules(
         project,
         rust_target,
