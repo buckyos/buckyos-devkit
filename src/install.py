@@ -1,7 +1,11 @@
 import os
-from pathlib import Path
-import shutil
 import platform
+import posixpath
+from pathlib import Path, PurePosixPath
+import re
+import shlex
+import shutil
+import subprocess
 import sys
 from typing import Optional
 
@@ -18,6 +22,244 @@ pre_install_apps = [
         "base_url": "https://github.com/buckyos/filebrowser/releases/download/",
     }
 ]
+
+
+class RemoteInstallHost:
+    def __init__(
+        self,
+        host: str,
+        user: Optional[str] = None,
+        port: Optional[int] = None,
+        identity_file: Optional[Path] = None,
+        ssh_options: Optional[list[str]] = None,
+        use_sudo: bool = False,
+    ) -> None:
+        embedded_user, host = self._split_host(host)
+        if user is not None and embedded_user is not None:
+            raise ValueError("Specify the SSH user either in --remote or --ssh-user, not both")
+
+        self.host = host
+        self.user = user or embedded_user
+        self.port = port
+        self.identity_file = identity_file
+        self.ssh_options = ssh_options or []
+        self.use_sudo = use_sudo
+        self._temp_dir: Optional[PurePosixPath] = None
+        self._copy_index = 0
+        self._remote_home: Optional[PurePosixPath] = None
+
+        for command in ("ssh", "scp"):
+            if shutil.which(command) is None:
+                raise FileNotFoundError(f"Required command not found: {command}")
+
+    @staticmethod
+    def _split_host(value: str) -> tuple[Optional[str], str]:
+        if not value or value.startswith("-") or any(char.isspace() for char in value):
+            raise ValueError(f"Invalid remote host: {value!r}")
+
+        user: Optional[str] = None
+        host = value
+        if "@" in value:
+            user, host = value.rsplit("@", 1)
+            if not user or not re.fullmatch(r"[A-Za-z0-9._-]+", user):
+                raise ValueError(f"Invalid SSH user in remote host: {value!r}")
+
+        if host.startswith("[") and host.endswith("]"):
+            host = host[1:-1]
+        if not host or not re.fullmatch(r"[A-Za-z0-9._:-]+", host):
+            raise ValueError(f"Invalid remote host: {value!r}")
+        return user, host
+
+    @property
+    def destination(self) -> str:
+        if self.user is None:
+            return self.host
+        return f"{self.user}@{self.host}"
+
+    @property
+    def scp_destination(self) -> str:
+        host = f"[{self.host}]" if ":" in self.host else self.host
+        if self.user is None:
+            return host
+        return f"{self.user}@{host}"
+
+    def _connection_args(self, scp: bool = False) -> list[str]:
+        args: list[str] = []
+        if self.port is not None:
+            args.extend(["-P" if scp else "-p", str(self.port)])
+        if self.identity_file is not None:
+            args.extend(["-i", str(self.identity_file)])
+        for option in self.ssh_options:
+            args.extend(["-o", option])
+        return args
+
+    def run(self, script: str, capture_output: bool = False, sudo: bool = False) -> str:
+        if sudo and self.use_sudo:
+            remote_command = f"sudo -n sh -c {shlex.quote(script)}"
+        else:
+            remote_command = f"sh -c {shlex.quote(script)}"
+
+        command = [
+            "ssh",
+            *self._connection_args(),
+            self.destination,
+            remote_command,
+        ]
+        print(f"+ ssh {self.destination}: {script}")
+        result = subprocess.run(
+            command,
+            text=True,
+            stdout=subprocess.PIPE if capture_output else None,
+            stderr=None,
+        )
+        if result.returncode != 0:
+            detail = (result.stderr or "").strip()
+            suffix = f": {detail}" if detail else ""
+            raise RuntimeError(
+                f"SSH command on {self.destination} failed with exit code {result.returncode}{suffix}"
+            )
+        return (result.stdout or "").strip()
+
+    def _ensure_temp_dir(self) -> PurePosixPath:
+        if self._temp_dir is None:
+            value = self.run(
+                "umask 077 && mktemp -d /tmp/buckyos-install.XXXXXXXXXX",
+                capture_output=True,
+            )
+            temp_dir = value.splitlines()[-1] if value else ""
+            if not re.fullmatch(r"/tmp/buckyos-install\.[A-Za-z0-9]+", temp_dir):
+                raise RuntimeError(f"Unexpected remote temporary directory: {temp_dir!r}")
+            self._temp_dir = PurePosixPath(temp_dir)
+        return self._temp_dir
+
+    def close(self) -> None:
+        if self._temp_dir is None:
+            return
+        temp_dir = self._temp_dir
+        self._temp_dir = None
+        try:
+            self.run(f"rm -rf -- {shlex.quote(str(temp_dir))}", capture_output=True)
+        except RuntimeError as error:
+            print(f"Warning: failed to remove remote temporary directory {temp_dir}: {error}")
+
+    def __enter__(self) -> "RemoteInstallHost":
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback) -> None:
+        self.close()
+
+    def _next_staging_path(self) -> PurePosixPath:
+        self._copy_index += 1
+        return self._ensure_temp_dir() / f"payload-{self._copy_index}"
+
+    def _scp(self, source: Path, target: PurePosixPath, recursive: bool = False) -> None:
+        command = ["scp", *self._connection_args(scp=True), "-p"]
+        if recursive:
+            command.append("-r")
+        command.extend([str(source), f"{self.scp_destination}:{target}"])
+        print(f"+ scp {source} => {self.destination}:{target}")
+        result = subprocess.run(command)
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"SCP to {self.destination} failed with exit code {result.returncode}"
+            )
+
+    @staticmethod
+    def _safe_path(path: PurePosixPath) -> PurePosixPath:
+        normalized = PurePosixPath(posixpath.normpath(str(path)))
+        if not normalized.is_absolute() or normalized == PurePosixPath("/"):
+            raise ValueError(f"Remote install path must be an absolute non-root path: {path}")
+        return normalized
+
+    def resolve_target_path(self, value: str | Path | PurePosixPath) -> PurePosixPath:
+        raw_path = os.fspath(value)
+        raw_path = raw_path.replace("${BUCKYOS_ROOT}", "/opt/buckyos/")
+        raw_path = raw_path.replace("$BUCKYOS_ROOT", "/opt/buckyos/")
+        if raw_path == "~" or raw_path.startswith("~/"):
+            if self._remote_home is None:
+                home = self.run('printf "%s" "$HOME"', capture_output=True)
+                self._remote_home = self._safe_path(PurePosixPath(home))
+            suffix = raw_path[2:] if raw_path.startswith("~/") else ""
+            return self._safe_path(self._remote_home / suffix)
+        return self._safe_path(PurePosixPath(raw_path))
+
+    @staticmethod
+    def child_path(root: PurePosixPath, value: str | Path) -> PurePosixPath:
+        child = PurePosixPath(os.fspath(value))
+        if child.is_absolute() or ".." in child.parts or child == PurePosixPath("."):
+            raise ValueError(f"Remote app path must stay below the target rootfs: {value}")
+        return root / child
+
+    def path_state(self, path: PurePosixPath) -> str:
+        path = self._safe_path(path)
+        quoted = shlex.quote(str(path))
+        script = (
+            f"if [ ! -e {quoted} ]; then printf absent; "
+            f"elif [ -d {quoted} ] && "
+            f"[ -z \"$(find {quoted} -mindepth 1 -maxdepth 1 -print -quit)\" ]; "
+            "then printf empty; else printf present; fi"
+        )
+        state = self.run(script, capture_output=True, sudo=True).splitlines()[-1]
+        if state not in {"absent", "empty", "present"}:
+            raise RuntimeError(f"Unexpected state for remote path {path}: {state!r}")
+        return state
+
+    def exists(self, path: PurePosixPath) -> bool:
+        path = self._safe_path(path)
+        quoted = shlex.quote(str(path))
+        return self.run(
+            f"if [ -e {quoted} ]; then printf yes; else printf no; fi",
+            capture_output=True,
+            sudo=True,
+        ).splitlines()[-1] == "yes"
+
+    def make_directory(self, path: PurePosixPath) -> None:
+        path = self._safe_path(path)
+        self.run(f"mkdir -p -- {shlex.quote(str(path))}", sudo=True)
+
+    def remove(self, path: PurePosixPath) -> None:
+        path = self._safe_path(path)
+        self.run(f"rm -rf -- {shlex.quote(str(path))}", sudo=True)
+
+    def copy_file(self, source: Path, target: PurePosixPath, executable: bool = False) -> None:
+        if not source.is_file():
+            raise FileNotFoundError(f"Source file not found: {source}")
+        target = self._safe_path(target)
+        staging_path = self._next_staging_path()
+        self._scp(source, staging_path)
+        script = (
+            f"mkdir -p -- {shlex.quote(str(target.parent))} && "
+            f"cp -- {shlex.quote(str(staging_path))} {shlex.quote(str(target))}"
+        )
+        if executable:
+            script += f" && chmod +x -- {shlex.quote(str(target))}"
+        self.run(script, sudo=True)
+
+    def copy_directory(self, source: Path, target: PurePosixPath) -> None:
+        if not source.is_dir():
+            raise FileNotFoundError(f"Source directory not found: {source}")
+        target = self._safe_path(target)
+        staging_path = self._next_staging_path()
+        self._scp(source, staging_path, recursive=True)
+        script = (
+            f"mkdir -p -- {shlex.quote(str(target.parent))} && "
+            f"rm -rf -- {shlex.quote(str(target))} && "
+            f"cp -R -- {shlex.quote(str(staging_path))} {shlex.quote(str(target))}"
+        )
+        executable_paths = []
+        if platform.system().lower() == "linux":
+            executable_paths = [
+                target / path.relative_to(source)
+                for path in source.rglob("*")
+                if path.is_file()
+                and _is_probably_executable(path)
+                and not os.access(path, os.X_OK)
+            ]
+        if executable_paths:
+            quoted_paths = " ".join(shlex.quote(str(path)) for path in executable_paths)
+            script += f" && chmod +x -- {quoted_paths}"
+        self.run(script, sudo=True)
+
 
 def _is_probably_executable(file_path: Path) -> bool:
     # 通过文件头判断是否可能是可执行文件（脚本或 ELF）
@@ -186,24 +428,57 @@ def install_buckyos_apps():
     return
     
 ########################################################
-def update_app(project:BuckyProject,app_name:str,skip_web_module:bool=False,check_reinstall:bool=False,target_rootfs:Optional[Path]=None):
+def _resolve_app_target(
+    project: BuckyProject,
+    app_info: AppInfo,
+    target_rootfs: Optional[Path | PurePosixPath],
+    remote: Optional[RemoteInstallHost],
+) -> Path | PurePosixPath:
+    configured_target = app_info.default_target_rootfs if target_rootfs is None else target_rootfs
+    if remote is not None:
+        return remote.resolve_target_path(configured_target)
+    if target_rootfs is None:
+        return project.resolve_from_config(configured_target)
+    return BuckyProject._expand_path(configured_target)
+
+
+def _target_child(
+    target_rootfs: Path | PurePosixPath,
+    relative_path: str | Path,
+    remote: Optional[RemoteInstallHost],
+) -> Path | PurePosixPath:
+    if remote is not None:
+        return remote.child_path(target_rootfs, relative_path)
+    return target_rootfs / relative_path
+
+
+def update_app(
+    project: BuckyProject,
+    app_name: str,
+    skip_web_module: bool = False,
+    check_reinstall: bool = False,
+    target_rootfs: Optional[Path | PurePosixPath] = None,
+    remote: Optional[RemoteInstallHost] = None,
+):
     # copy build modules to rootfs/
     app_info : Optional[AppInfo] = project.apps.get(app_name)
     if app_info is None:
         raise ValueError(f"App {app_name} not found")
 
-    if target_rootfs is None:
-        target_rootfs = project.resolve_from_config(app_info.default_target_rootfs)
-    else:
-        target_rootfs = BuckyProject._expand_path(target_rootfs)
+    target_rootfs = _resolve_app_target(project, app_info, target_rootfs, remote)
     
     if check_reinstall:
-        if not target_rootfs.exists():
+        target_state = remote.path_state(target_rootfs) if remote is not None else None
+        if (remote is not None and target_state == "absent") or (
+            remote is None and not target_rootfs.exists()
+        ):
             print(f"⚠️  App {app_name} target rootfs {target_rootfs} not exists, need reinstall...")
-            return reinstall_app(project, app_name, skip_web_module, target_rootfs)
-        if _is_empty_dir(target_rootfs):
+            return reinstall_app(project, app_name, skip_web_module, target_rootfs, remote)
+        if (remote is not None and target_state == "empty") or (
+            remote is None and _is_empty_dir(target_rootfs)
+        ):
             print(f"⚠️  App {app_name} target rootfs {target_rootfs} is empty, need reinstall...")
-            return reinstall_app(project, app_name, skip_web_module, target_rootfs)
+            return reinstall_app(project, app_name, skip_web_module, target_rootfs, remote)
 
     print(f"🎯 Updating modules for app {app_name} to {target_rootfs}")
 
@@ -214,87 +489,125 @@ def update_app(project:BuckyProject,app_name:str,skip_web_module:bool=False,chec
                 continue
 
         src_path = project.resolve_from_base_dir(app_info.rootfs) / module_path
-        target_path = target_rootfs / module_path
+        target_path = _target_child(target_rootfs, module_path, remote)
         
         if not module_path.endswith("/"):
             # 确保目标目录存在
             #print(f"target_path.parent: {target_path.parent}")
-            target_path.parent.mkdir(parents=True, exist_ok=True)
-
             src_path = get_execute_name(src_path)
-            target_path = get_execute_name(target_path)
-            
+            if remote is None:
+                target_path.parent.mkdir(parents=True, exist_ok=True)
+                target_path = get_execute_name(target_path)
+
             print(f"+ Copying file {src_path} => {target_path}")
-            shutil.copy(src_path, target_path)
-            ensure_executable(str(target_path))
+            if remote is None:
+                shutil.copy(src_path, target_path)
+                ensure_executable(str(target_path))
+            else:
+                remote.copy_file(Path(src_path), target_path, executable=True)
         else:
-            _copy_dir_with_exec_fix(src_path, target_path)
+            if remote is None:
+                _copy_dir_with_exec_fix(src_path, target_path)
+            else:
+                remote.copy_directory(src_path, target_path)
 
     
     print(f"✅ Updating app {app_name} to {target_rootfs} OK")
 
-def clean_app(project:BuckyProject,app_name:str,target_rootfs:Optional[Path]=None):
+def clean_app(
+    project: BuckyProject,
+    app_name: str,
+    target_rootfs: Optional[Path | PurePosixPath] = None,
+    remote: Optional[RemoteInstallHost] = None,
+):
     app_info : Optional[AppInfo] = project.apps.get(app_name)
     if app_info is None:
         raise ValueError(f"App {app_name} not found")
 
-    if target_rootfs is None:
-        target_rootfs = project.resolve_from_config(app_info.default_target_rootfs)
-    else:
-        target_rootfs = BuckyProject._expand_path(target_rootfs)
+    target_rootfs = _resolve_app_target(project, app_info, target_rootfs, remote)
 
     print(f"🧹 Cleaning app {app_name} from {target_rootfs}")
     for clean_path in app_info.clean_paths:
-        real_path = target_rootfs / clean_path
-        if real_path.exists():
+        real_path = _target_child(target_rootfs, clean_path, remote)
+        path_exists = remote.exists(real_path) if remote is not None else real_path.exists()
+        if path_exists:
             print(f"- Removing {real_path}")
-            if real_path.is_file():
+            if remote is not None:
+                remote.remove(real_path)
+            elif real_path.is_file():
                 real_path.unlink()
             elif real_path.is_dir():
                 shutil.rmtree(real_path)
 
 
-def install_app_data(project:BuckyProject,app_name:str,target_rootfs:Optional[Path]=None):
+def install_app_data(
+    project: BuckyProject,
+    app_name: str,
+    target_rootfs: Optional[Path | PurePosixPath] = None,
+    remote: Optional[RemoteInstallHost] = None,
+):
     app_info : AppInfo = project.apps.get(app_name)
     if app_info is None:
         raise ValueError(f"App {app_name} not found")
 
-    if target_rootfs is None:
-        target_rootfs = project.resolve_from_config(app_info.default_target_rootfs)
-    else:
-        target_rootfs = BuckyProject._expand_path(target_rootfs)
+    target_rootfs = _resolve_app_target(project, app_info, target_rootfs, remote)
 
     print(f"📋 Installing data for app {app_name} to {target_rootfs}")
 
     for data_path in app_info.data_paths:
         src_path = project.resolve_from_base_dir(app_info.rootfs) / data_path
-        target_path = target_rootfs / data_path
-        if target_path.exists():
+        target_path = _target_child(target_rootfs, data_path, remote)
+        path_exists = remote.exists(target_path) if remote is not None else target_path.exists()
+        if path_exists:
             print(f"⏭️ {target_path} already exists, keep user data.")
             continue;
             
         if src_path.exists():
             if src_path.is_file():
-                target_path.parent.mkdir(parents=True, exist_ok=True)
                 print(f"+ Copying file {src_path} => {target_path}")
-                shutil.copy(src_path, target_path)
+                if remote is None:
+                    target_path.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy(src_path, target_path)
+                else:
+                    remote.copy_file(src_path, target_path)
             elif src_path.is_dir():
-                _copy_dir_with_exec_fix(src_path, target_path)
+                if remote is None:
+                    _copy_dir_with_exec_fix(src_path, target_path)
+                else:
+                    remote.copy_directory(src_path, target_path)
         else:
             # 数据路径可能还不存在，创建空目录
             print(f"+ Creating data directory {target_path}")
-            target_path.mkdir(parents=True, exist_ok=True)
+            if remote is None:
+                target_path.mkdir(parents=True, exist_ok=True)
+            else:
+                remote.make_directory(target_path)
 
 
-def reinstall_app(bucky_project:BuckyProject, app_name:str, skip_web_module:bool=False,target_rootfs:Optional[Path]=None):
+def reinstall_app(
+    bucky_project: BuckyProject,
+    app_name: str,
+    skip_web_module: bool = False,
+    target_rootfs: Optional[Path | PurePosixPath] = None,
+    remote: Optional[RemoteInstallHost] = None,
+):
     print(f"🔄 Reinstalling app {app_name} to {target_rootfs} ... ")
-    clean_app(bucky_project, app_name, target_rootfs)
-    install_app_data(bucky_project, app_name, target_rootfs)
-    update_app(bucky_project, app_name, skip_web_module, check_reinstall=False, target_rootfs=target_rootfs)
+    clean_app(bucky_project, app_name, target_rootfs, remote)
+    install_app_data(bucky_project, app_name, target_rootfs, remote)
+    update_app(
+        bucky_project,
+        app_name,
+        skip_web_module,
+        check_reinstall=False,
+        target_rootfs=target_rootfs,
+        remote=remote,
+    )
     print(f"✅ Reinstalling app {app_name} OK")
 
 INSTALL_HELP = """usage: {prog} [-h] [--all] [reinstall] [--app=APP]
-                 [--skip-web] [--target-rootfs=DIR]
+                 [--skip-web] [--target-rootfs=DIR] [--remote=HOST]
+                 [--ssh-user=USER] [--ssh-port=PORT] [--ssh-key=FILE]
+                 [--ssh-option=OPTION] [--sudo] [--yes]
 
 Install or update BuckyOS project apps.
 
@@ -307,6 +620,14 @@ options:
   --app=APP             Limit the operation to one app
   --skip-web            Skip web modules while updating app files
   --target-rootfs=DIR   Override the target rootfs directory
+  --remote=HOST         Install on a remote POSIX host through ssh/scp;
+                        USER@HOST is also accepted
+  --ssh-user=USER       SSH user (defaults to the SSH configuration)
+  --ssh-port=PORT       SSH port (defaults to the SSH configuration)
+  --ssh-key=FILE        SSH private key file
+  --ssh-option=OPTION   Pass an -o option to ssh/scp; may be repeated
+  --sudo                Run remote filesystem changes through passwordless sudo
+  -y, --yes             Confirm reinstalling a non-empty remote target
 """
 
 
@@ -318,6 +639,117 @@ def _print_install_help(prog: str) -> None:
     print(INSTALL_HELP.format(prog=prog))
 
 
+def _option_values(args: list[str], option: str) -> list[str]:
+    values: list[str] = []
+    prefix = f"{option}="
+    index = 0
+    while index < len(args):
+        arg = args[index]
+        if arg == option:
+            if index + 1 >= len(args) or args[index + 1].startswith("--"):
+                raise ValueError(f"{option} requires a value")
+            values.append(args[index + 1])
+            index += 2
+            continue
+        if arg.startswith(prefix):
+            value = arg[len(prefix):]
+            if not value:
+                raise ValueError(f"{option} requires a value")
+            values.append(value)
+        index += 1
+    return values
+
+
+def _option_value(args: list[str], option: str) -> Optional[str]:
+    values = _option_values(args, option)
+    if len(values) > 1:
+        raise ValueError(f"{option} may only be specified once")
+    return values[0] if values else None
+
+
+def _parse_ssh_port(value: Optional[str]) -> Optional[int]:
+    if value is None:
+        return None
+    try:
+        port = int(value)
+    except ValueError as error:
+        raise ValueError(f"Invalid --ssh-port value: {value!r}") from error
+    if port < 1 or port > 65535:
+        raise ValueError(f"Invalid --ssh-port value: {value!r}")
+    return port
+
+
+def _confirm_remote_reinstall(
+    remote: RemoteInstallHost,
+    targets: list[tuple[str, PurePosixPath]],
+) -> bool:
+    print("⚠️  Full reinstall requested for existing remote installation(s):")
+    for app_name, target in targets:
+        print(f"  - {app_name}: {remote.destination}:{target}")
+    try:
+        answer = input("This may remove remote configuration and runtime data. Continue? [y/N] ")
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return False
+    return answer.strip().lower() in {"y", "yes"}
+
+
+def _run_install(
+    bucky_project: BuckyProject,
+    install_all: bool,
+    app_name: Optional[str],
+    skip_web_module: bool,
+    target_rootfs: Optional[Path],
+    remote: Optional[RemoteInstallHost] = None,
+    assume_yes: bool = False,
+) -> int:
+    if app_name is not None and app_name not in bucky_project.apps:
+        raise ValueError(f"App {app_name} not found")
+    app_names = [app_name] if app_name is not None else list(bucky_project.apps.keys())
+
+    if install_all and remote is not None and not assume_yes:
+        existing_targets: list[tuple[str, PurePosixPath]] = []
+        for selected_app in app_names:
+            app_info = bucky_project.apps[selected_app]
+            resolved_target = _resolve_app_target(
+                bucky_project,
+                app_info,
+                target_rootfs,
+                remote,
+            )
+            if remote.path_state(resolved_target) == "present":
+                existing_targets.append((selected_app, resolved_target))
+        if existing_targets and not _confirm_remote_reinstall(remote, existing_targets):
+            print("Remote reinstall cancelled.")
+            return 1
+
+    if install_all:
+        if app_name is None:
+            print("Installing all apps ... 🚀")
+        for selected_app in app_names:
+            reinstall_app(
+                bucky_project,
+                selected_app,
+                skip_web_module,
+                target_rootfs,
+                remote,
+            )
+        return 0
+
+    if app_name is None:
+        print("Updating all apps ... 🚀")
+    for selected_app in app_names:
+        update_app(
+            bucky_project,
+            selected_app,
+            skip_web_module,
+            check_reinstall=True,
+            target_rootfs=target_rootfs,
+            remote=remote,
+        )
+    return 0
+
+
 def install_main(argv: list[str] | None = None):
     args = sys.argv[1:] if argv is None else list(argv)
     if _has_help_arg(args):
@@ -325,20 +757,33 @@ def install_main(argv: list[str] | None = None):
         _print_install_help(prog)
         return
 
+    try:
+        target_rootfs_value = _option_value(args, "--target-rootfs")
+        app_name = _option_value(args, "--app")
+        remote_host = _option_value(args, "--remote")
+        ssh_user = _option_value(args, "--ssh-user")
+        ssh_port = _parse_ssh_port(_option_value(args, "--ssh-port"))
+        ssh_key_value = _option_value(args, "--ssh-key")
+        ssh_options = _option_values(args, "--ssh-option")
+    except ValueError as error:
+        print(f"Error: {error}", file=sys.stderr)
+        return 2
+
     print(f"buckyos_root: {buckyos_root}")
-    skip_web_module: bool = "--skip-web" in args
-    target_rootfs: Optional[Path] = None
-    for arg in args:
-        if arg.startswith("--target-rootfs="):
-            target_rootfs = Path(arg.split("=")[1])
+    target_rootfs = Path(target_rootfs_value) if target_rootfs_value is not None else None
     install_all: bool = "--all" in args or "reinstall" in args
-    app_name : Optional[str] = None
-    skip_web_module: bool = False
-    for arg in args:
-        if arg.startswith("--app="):
-            app_name = arg.split("=")[1]
-        if arg.startswith("--skip-web"):
-            skip_web_module = True
+    skip_web_module = "--skip-web" in args
+    assume_yes = "--yes" in args or "-y" in args
+    use_sudo = "--sudo" in args
+    if remote_host is None and any(
+        value is not None for value in (ssh_user, ssh_port, ssh_key_value)
+    ):
+        print("Error: SSH options require --remote", file=sys.stderr)
+        return 2
+    if remote_host is None and (ssh_options or use_sudo or assume_yes):
+        print("Error: remote-only options require --remote", file=sys.stderr)
+        return 2
+
     # Load project configuration
     config_file : Optional[Path] = BuckyProject.get_project_config_file()
     if config_file is None:
@@ -354,26 +799,40 @@ def install_main(argv: list[str] | None = None):
     bucky_project = BuckyProject.from_file(config_file, overlay_files)
     os.environ["BUCKYOS_ROOT"] =  get_buckyos_root()
     if os.environ.get("APPDATA") is None:
-            os.environ["APPDATA"] = "/opt/"
+        os.environ["APPDATA"] = "/opt/"
 
+    if remote_host is None:
+        return _run_install(
+            bucky_project,
+            install_all,
+            app_name,
+            skip_web_module,
+            target_rootfs,
+        )
 
-
-    if install_all:
-        if app_name is None:
-            print("Installing all apps ... 🚀")
-            for app_name in bucky_project.apps.keys():
-                reinstall_app(bucky_project, app_name, skip_web_module, target_rootfs)
-            return
-        else:
-            reinstall_app(bucky_project, app_name, skip_web_module, target_rootfs)
-    else:
-        if app_name is None:
-            print("Updating all apps ... 🚀")
-            for app_name in bucky_project.apps.keys():
-                update_app(bucky_project, app_name, skip_web_module, check_reinstall=True, target_rootfs=target_rootfs)
-            return
-        else:
-            update_app(bucky_project, app_name, skip_web_module, check_reinstall=True, target_rootfs=target_rootfs)
+    identity_file = Path(ssh_key_value).expanduser() if ssh_key_value is not None else None
+    try:
+        with RemoteInstallHost(
+            remote_host,
+            user=ssh_user,
+            port=ssh_port,
+            identity_file=identity_file,
+            ssh_options=ssh_options,
+            use_sudo=use_sudo,
+        ) as remote:
+            print(f"Installing on remote host {remote.destination} through ssh/scp")
+            return _run_install(
+                bucky_project,
+                install_all,
+                app_name,
+                skip_web_module,
+                target_rootfs,
+                remote=remote,
+                assume_yes=assume_yes,
+            )
+    except (FileNotFoundError, RuntimeError, ValueError) as error:
+        print(f"Error: {error}", file=sys.stderr)
+        return 1
 
 if __name__ == "__main__":
     install_main()

@@ -38,6 +38,25 @@ python3 test_installation.py
 - `buckyos-install` - 安装工具
 - `buckyos-remote` - 远程管理工具
 
+### 远程安装
+
+`buckyos-install` 可以通过系统的 `ssh` 和 `scp` 把当前构建产物安装到远程 POSIX 主机：
+
+```bash
+# 默认更新模块/二进制
+buckyos-install --remote 192.0.2.10 --ssh-user root
+
+# 首次完整安装；目标目录不存在或为空时无需确认
+buckyos-install --all --remote 192.0.2.10 --ssh-user deploy --sudo
+
+# 对已有安装执行完整重装时会交互确认；自动化环境可显式确认
+buckyos-install --all --remote 192.0.2.10 --ssh-user deploy --sudo --yes
+```
+
+可用的连接参数包括 `--ssh-port`、`--ssh-key`，以及可重复传入的
+`--ssh-option`（例如 `--ssh-option ProxyJump=bastion`）。`--remote` 也接受
+`USER@HOST`。使用 `--sudo` 时，远程账号必须能够执行免密 `sudo`。
+
 ### Rust 版本信息注入
 
 `buckyos-build` 在编译时会注入以下环境变量，可用于输出完整版本信息：

@@ -55,6 +55,9 @@ class CliHelpTests(unittest.TestCase):
         self.assertIn("-h, --help", output)
         self.assertIn("--all", output)
         self.assertIn("--target-rootfs", output)
+        self.assertIn("--remote", output)
+        self.assertIn("--ssh-key", output)
+        self.assertIn("--sudo", output)
         self.assertNotIn("buckyos_root:", output)
 
     def test_remote_subcommands_accept_help(self):
