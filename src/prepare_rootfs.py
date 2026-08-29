@@ -36,7 +36,7 @@ def copy_rust_module(project: BuckyProject, module_name: str, rust_target: Optio
             src_file = rust_target_dir / rust_target / "release" / module_name
         else:
             src_file = rust_target_dir / "release" / module_name
-        src_file = get_execute_name(src_file)
+        src_file = Path(get_execute_name(src_file))
         
         # 目标路径：rootfs/module_path/module_name
         
@@ -46,7 +46,7 @@ def copy_rust_module(project: BuckyProject, module_name: str, rust_target: Optio
             real_target: Path = project.resolve_from_base_dir(app_info.rootfs) / module_path / module_name
 
         os.makedirs(real_target.parent, exist_ok=True)
-        real_target = get_execute_name(real_target)
+        real_target = get_execute_name(real_target, src_file.suffix)
         
         print(f'+ Copying rust executable: {src_file} => {real_target}')
         shutil.copy(src_file, real_target)

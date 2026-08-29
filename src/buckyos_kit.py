@@ -4,14 +4,25 @@ import os
 import locale
 
 _system_name = platform.system()
+_windows_execute_extensions = (".ps1", ".cmd", ".exe")
 
-def get_execute_name(file_name) -> str:
+def get_execute_name(file_name, preferred_extension=None) -> str:
     # Convert to string if it's a Path object or other type
     file_name = str(file_name)
     if _system_name == "Windows":
-        # Only add .exe if the filename (basename) has no extension
         base_name = os.path.basename(file_name)
         if '.' not in base_name:
+            if preferred_extension is not None:
+                extension = str(preferred_extension)
+                if extension and not extension.startswith("."):
+                    extension = "." + extension
+                if extension not in _windows_execute_extensions:
+                    raise ValueError(f"Unsupported Windows executable extension: {extension}")
+                return file_name + extension
+            for extension in _windows_execute_extensions:
+                candidate = file_name + extension
+                if os.path.isfile(candidate):
+                    return candidate
             file_name = file_name + ".exe"
     return file_name
 
@@ -148,4 +159,3 @@ def get_buckyos_root():
         return os.path.join(user_data_dir, "buckyos")
     else:
         return "/opt/buckyos/"
-

@@ -494,10 +494,10 @@ def update_app(
         if not module_path.endswith("/"):
             # 确保目标目录存在
             #print(f"target_path.parent: {target_path.parent}")
-            src_path = get_execute_name(src_path)
+            src_path = Path(get_execute_name(src_path))
             if remote is None:
                 target_path.parent.mkdir(parents=True, exist_ok=True)
-                target_path = get_execute_name(target_path)
+                target_path = get_execute_name(target_path, src_path.suffix)
 
             print(f"+ Copying file {src_path} => {target_path}")
             if remote is None:
