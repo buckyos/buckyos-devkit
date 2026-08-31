@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field, asdict
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import List, Dict, Optional, Any
 import platform
 import tempfile
@@ -11,61 +11,137 @@ if platform.system() == "Windows":
 else:
     _temp_dir = "/tmp/"
 
+@dataclass(frozen=True)
+class PikgModuleConfig:
+    meta_dir: Path = Path("dapp_meta")
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'PikgModuleConfig':
+        if not isinstance(data, dict):
+            raise ValueError("pikg must be an object")
+        unknown = set(data) - {"meta_dir"}
+        if unknown:
+            raise ValueError(f"Unknown pikg option(s): {', '.join(sorted(unknown))}")
+        meta_dir = data.get("meta_dir", "dapp_meta")
+        if not isinstance(meta_dir, str) or not meta_dir:
+            raise ValueError("pikg.meta_dir must be a non-empty string")
+        return cls(meta_dir=Path(meta_dir))
+
+    def to_dict(self) -> Dict[str, Any]:
+        if self.meta_dir == Path("dapp_meta"):
+            return {}
+        return {"meta_dir": str(self.meta_dir)}
+
+
+def _parse_format_options(data: Dict[str, Any]) -> tuple[str, Optional[PikgModuleConfig]]:
+    artifact_format = data.get("format", "files")
+    if not isinstance(artifact_format, str) or not artifact_format:
+        raise ValueError("Module format must be a non-empty string")
+    pikg_data = data.get("pikg")
+    if artifact_format != "pikg" and pikg_data is not None:
+        raise ValueError("Only format: pikg modules may contain a pikg config block")
+    pikg = (
+        PikgModuleConfig.from_dict({} if pikg_data is None else pikg_data)
+        if artifact_format == "pikg"
+        else None
+    )
+    return artifact_format, pikg
+
+
+def _add_format_options(result: Dict[str, Any], artifact_format: str, pikg: Optional[PikgModuleConfig]) -> None:
+    if artifact_format != "files":
+        result["format"] = artifact_format
+    if artifact_format == "pikg" and pikg is not None:
+        pikg_data = pikg.to_dict()
+        if pikg_data:
+            result["pikg"] = pikg_data
+
+
+@dataclass
+class NoneModuleInfo:
+    name: str
+    src_dir: Path
+    type: str = "none"
+    format: str = "files"
+    pikg: Optional[PikgModuleConfig] = None
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'NoneModuleInfo':
+        artifact_format, pikg = _parse_format_options(data)
+        src_dir = data.get('src_dir')
+        if not isinstance(src_dir, str) or not src_dir:
+            raise ValueError("None module src_dir must be a non-empty string")
+        return cls(
+            name=data['name'],
+            src_dir=Path(src_dir),
+            format=artifact_format,
+            pikg=pikg,
+        )
+
+    def to_dict(self) -> Dict[str, Any]:
+        result: Dict[str, Any] = {
+            'name': self.name,
+            'src_dir': str(self.src_dir),
+        }
+        _add_format_options(result, self.format, self.pikg)
+        return result
+
+
 @dataclass
 class WebModuleInfo:
     name: str
     src_dir: Path
     type: str = "web"
-    
+    format: str = "files"
+    pikg: Optional[PikgModuleConfig] = None
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'WebModuleInfo':
-        """Create WebModuleInfo from dictionary"""
+        artifact_format, pikg = _parse_format_options(data)
         return cls(
             name=data['name'],
             src_dir=Path(data['src_dir']),
-            type=data.get('type', 'web')
+            format=artifact_format,
+            pikg=pikg,
         )
-    
+
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary"""
-        return {
+        result: Dict[str, Any] = {
             'name': self.name,
-            'src_dir': str(self.src_dir)
+            'src_dir': str(self.src_dir),
         }
+        _add_format_options(result, self.format, self.pikg)
+        return result
 
-@dataclass
-class WebPikgModuleInfo(WebModuleInfo):
-    type: str = "web-pikg"
-
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'WebPikgModuleInfo':
-        return cls(
-            name=data['name'],
-            src_dir=Path(data['src_dir']),
-            type=data.get('type', 'web-pikg')
-        )
 
 @dataclass
 class RustModuleInfo:
     name: str
     file_only: bool = False
     type: str = "rust"
-    
+    format: str = "files"
+    pikg: Optional[PikgModuleConfig] = None
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'RustModuleInfo':
-        """Create RustModuleInfo from dictionary"""
+        artifact_format, pikg = _parse_format_options(data)
         return cls(
             name=data['name'],
             file_only=data.get('file_only', False),
-            type=data.get('type', 'rust')
+            format=artifact_format,
+            pikg=pikg,
         )
-    
+
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary"""
-        return {
+        result: Dict[str, Any] = {
             'name': self.name,
-            'file_only': self.file_only
+            'file_only': self.file_only,
         }
+        _add_format_options(result, self.format, self.pikg)
+        return result
+
+
+ModuleInfo = NoneModuleInfo | WebModuleInfo | RustModuleInfo
 
 @dataclass
 class AppInfo:
@@ -112,7 +188,7 @@ class BuckyProject:
     version: str
     base_dir: Path = field(default_factory=Path.cwd)
     config_dir: Optional[Path] = None
-    modules: Dict[str, WebModuleInfo | WebPikgModuleInfo | RustModuleInfo] = field(default_factory=dict)
+    modules: Dict[str, ModuleInfo] = field(default_factory=dict)
     apps: Dict[str, AppInfo] = field(default_factory=dict)
 
     rust_target_dir: Optional[Path] = None
@@ -134,11 +210,13 @@ class BuckyProject:
             raise ValueError(f"Web module {module} already exists")
         self.modules[module] = info
 
-    def add_web_pikg_module(self, module: str, info: WebPikgModuleInfo) -> None:
+    def add_none_module(self, module: str, info: NoneModuleInfo) -> None:
+        """Add a module with no build step."""
         if module in self.modules:
-            raise ValueError(f"Web PIKG module {module} already exists")
+            raise ValueError(f"None module {module} already exists")
         self.modules[module] = info
-    
+
+
     def add_rust_module(self, module: str, info: RustModuleInfo) -> None:
         """Add a Rust module"""
         if module in self.modules:
@@ -195,6 +273,60 @@ class BuckyProject:
         if path_obj.is_absolute():
             return path_obj
         return self.base_dir / path_obj
+
+    @staticmethod
+    def _validate_pikg_install_path(module_name: str, app_name: str, module_path: str) -> None:
+        if not isinstance(module_path, str):
+            raise ValueError(f"PIKG module {module_name} install path for app {app_name} must be a string")
+        normalized = module_path.replace("\\", "/")
+        path = PurePosixPath(normalized)
+        if (
+            not normalized
+            or normalized.endswith("/")
+            or path.is_absolute()
+            or (len(normalized) >= 2 and normalized[1] == ":")
+            or any(part in ("", ".", "..") for part in path.parts)
+        ):
+            raise ValueError(
+                f"PIKG module {module_name} has unsafe install path for app {app_name}: {module_path}"
+            )
+        if path.suffix.lower() != ".pikg":
+            raise ValueError(
+                f"PIKG module {module_name} install path for app {app_name} must end with .pikg: {module_path}"
+            )
+
+    def validate(self) -> None:
+        for module_name, module_info in self.modules.items():
+            if module_info.type not in {"none", "web", "rust"}:
+                raise ValueError(f"Unknown module type: {module_info.type}")
+            if module_info.format not in {"files", "pikg"}:
+                raise ValueError(f"Unknown module format: {module_info.format}")
+            if module_info.format != "pikg" and module_info.pikg is not None:
+                raise ValueError(
+                    f"Only format: pikg module {module_name} may contain a pikg config block"
+                )
+            if module_info.format != "pikg":
+                continue
+
+            install_refs = []
+            for app_name, app_info in self.apps.items():
+                if module_name not in app_info.modules:
+                    continue
+                module_path = app_info.modules[module_name]
+                self._validate_pikg_install_path(module_name, app_name, module_path)
+                rootfs = self.resolve_from_base_dir(app_info.rootfs).resolve()
+                staging_path = (rootfs / module_path).resolve()
+                try:
+                    staging_path.relative_to(rootfs)
+                except ValueError as error:
+                    raise ValueError(
+                        f"PIKG module {module_name} install path escapes app {app_name} rootfs: {module_path}"
+                    ) from error
+                install_refs.append((app_name, staging_path))
+            if not install_refs:
+                raise ValueError(
+                    f"PIKG module {module_name} must have at least one same-key app module install entry"
+                )
     
     @classmethod
     def from_file(cls, config_file: str | Path, overlay_files: Optional[List[str | Path]] = None) -> 'BuckyProject':
@@ -267,13 +399,17 @@ class BuckyProject:
             project_base_dir = config_dir
 
         # Parse modules
-        modules: Dict[str, WebModuleInfo | WebPikgModuleInfo | RustModuleInfo] = {}
+        modules: Dict[str, ModuleInfo] = {}
         for module_name, module_data in data.get('modules', {}).items():
-            module_type = module_data.get('type', 'web')
-            if module_type == 'web':
+            module_type = module_data.get('type', 'none')
+            if module_type == 'none':
+                modules[module_name] = NoneModuleInfo.from_dict(module_data)
+            elif module_type == 'web':
                 modules[module_name] = WebModuleInfo.from_dict(module_data)
             elif module_type == 'web-pikg':
-                modules[module_name] = WebPikgModuleInfo.from_dict(module_data)
+                raise ValueError(
+                    "Unsupported module type: web-pikg; use type: web with format: pikg"
+                )
             elif module_type == 'rust':
                 modules[module_name] = RustModuleInfo.from_dict(module_data)
             else:
@@ -299,6 +435,7 @@ class BuckyProject:
         if 'rust_target_dir' in data:
             project.rust_target_dir = project.resolve_from_config(data['rust_target_dir'])
 
+        project.validate()
         return project
     
     def to_dict(self) -> Dict[str, Any]:
@@ -306,8 +443,8 @@ class BuckyProject:
         modules_dict = {}
         for module_name, module_info in self.modules.items():
             module_dict = module_info.to_dict()
-            if isinstance(module_info, WebPikgModuleInfo):
-                module_dict['type'] = 'web-pikg'
+            if isinstance(module_info, NoneModuleInfo):
+                pass
             elif isinstance(module_info, WebModuleInfo):
                 module_dict['type'] = 'web'
             elif isinstance(module_info, RustModuleInfo):

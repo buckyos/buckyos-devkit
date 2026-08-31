@@ -1,121 +1,74 @@
-import os
 import subprocess
-import json
-from typing import List
-from .project import BuckyProject, WebModuleInfo, WebPikgModuleInfo
+from typing import Dict, List
 
-src_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
-
-
-def get_github_dependencies(package_json_path: str) -> List[str]:
-    """Extract GitHub dependencies from package.json
-    
-    Recognizes the following formats:
-    - "github:owner/repo"
-    - "git+https://github.com/..."
-    - "git+ssh://git@github.com/..."
-    """
-    if not os.path.exists(package_json_path):
-        return []
-    
-    try:
-        with open(package_json_path, 'r', encoding='utf-8') as f:
-            pkg = json.load(f)
-        
-        github_deps = []
-        dependencies = pkg.get('dependencies', {})
-        
-        for name, version in dependencies.items():
-            if isinstance(version, str):
-                # Check if it's a GitHub dependency
-                if any(pattern in version.lower() for pattern in ['github:', 'git+https://github.com', 'git+ssh://git@github.com']):
-                    github_deps.append(name)
-        
-        return github_deps
-    except (json.JSONDecodeError, IOError) as e:
-        print(f"Warning: unable to read package.json: {e}")
-        return []
+from .module_build import BuildContext, BuildResult, BuildResultSpec
+from .project import BuckyProject, ModuleInfo, WebModuleInfo
 
 
-def _build_pnpm_module(project: BuckyProject, module_name: str, module_type: str):
-    module_info = project.modules[module_name]
-    if not module_info:
-        raise ValueError(f"{module_type} module {module_name} not found")
+def _build_pnpm_module(project: BuckyProject, module_name: str) -> BuildResult:
+    module_info = project.modules.get(module_name)
+    if not isinstance(module_info, WebModuleInfo):
+        raise ValueError(f"Web module {module_name} not found")
 
-    print(f'* Building {module_type} module {module_name} at {module_info.src_dir} ...')
-    work_dir = project.resolve_from_base_dir(module_info.src_dir)
-    package_json = os.path.join(work_dir, 'package.json')
-    
-    # Detect GitHub dependencies
-    github_deps = get_github_dependencies(package_json)
-    
-    # Build command
-    cmd = 'pnpm install'
-    
-    if github_deps:
-        deps_str = ' '.join(github_deps)
-        cmd += f' && pnpm update {deps_str}'
-        print(f'  -> Will update GitHub dependencies: {", ".join(github_deps)}')
-    
-    cmd += ' && pnpm run build'
-    
-    print(f'* Build {module_type} module {module_name}:\n**\t{cmd} ')
-    subprocess.run(cmd, shell=True, cwd=work_dir, check=True)
-    print(f'Build {module_type} module {module_name} completed')
+    work_dir = project.resolve_from_base_dir(module_info.src_dir).resolve()
+    package_json = work_dir / "package.json"
+    if not package_json.is_file():
+        raise FileNotFoundError(f"Web module {module_name} has no package.json: {package_json}")
+
+    label = f"{module_info.type}/{module_info.format}"
+    print(f"* Building {label} module {module_name} at {module_info.src_dir} ...")
+    for command in ("pnpm install --no-lockfile", "pnpm run build"):
+        print(f"**\t{command}")
+        subprocess.run(command, shell=True, cwd=work_dir, check=True)
+
+    print(f"Build {label} module {module_name} completed")
+    return BuildResult(
+        module_key=module_name,
+        build_type="web",
+        work_dir=work_dir,
+    )
 
 
-def build_web_module(project: BuckyProject, module_name: str):
-    """Build a web module.
-
-    Automatically detects and updates GitHub dependencies while keeping other dependencies stable.
-    """
-    _build_pnpm_module(project, module_name, "web")
+def build_web_module(project: BuckyProject, module_name: str) -> BuildResult:
+    return _build_pnpm_module(project, module_name)
 
 
-def build_web_pikg_module(project: BuckyProject, module_name: str):
-    """Build a web-pikg module without applying the traditional dist copy step."""
-    _build_pnpm_module(project, module_name, "web-pikg")
-
-def build_web_modules(project: BuckyProject, selected_modules: List[str] | None = None):
-    """Build web modules in the project"""
-    # 如果project里没有 web_modules 直接跳过这个函数
+def build_web_modules(
+    project: BuckyProject,
+    selected_modules: List[str] | None = None,
+) -> Dict[str, BuildResult]:
     web_modules = [
         module_name
         for module_name, module_info in project.modules.items()
-        if project.modules[module_name].type == "web"
+        if isinstance(module_info, WebModuleInfo)
     ]
     if selected_modules is not None:
         selected_set = set(selected_modules)
         web_modules = [module_name for module_name in web_modules if module_name in selected_set]
     if not web_modules:
-        return
+        return {}
 
-    print(f'🚀 Building web modules ...')
-    for module_name in web_modules:
-        build_web_module(project, module_name)
-    
-    print(f'✅ Build web modules completed')
-
-
-def build_web_pikg_modules(project: BuckyProject, selected_modules: List[str] | None = None):
-    """Build web-pikg modules in the project."""
-    web_pikg_modules = [
-        module_name
-        for module_name, module_info in project.modules.items()
-        if isinstance(module_info, WebPikgModuleInfo)
-    ]
-    if selected_modules is not None:
-        selected_set = set(selected_modules)
-        web_pikg_modules = [
-            module_name for module_name in web_pikg_modules if module_name in selected_set
-        ]
-    if not web_pikg_modules:
-        return
-
-    print('🚀 Building web-pikg modules ...')
-    for module_name in web_pikg_modules:
-        build_web_pikg_module(project, module_name)
-
-    print('✅ Build web-pikg modules completed')
+    print("🚀 Building web modules ...")
+    results = {
+        module_name: build_web_module(project, module_name)
+        for module_name in web_modules
+    }
+    print("✅ Build web modules completed")
+    return results
 
 
+class WebBuilder:
+    build_type = "web"
+
+    def plan(self, module_key: str, module: ModuleInfo) -> BuildResultSpec:
+        if not isinstance(module, WebModuleInfo):
+            raise ValueError(f"Web builder received non-Web module {module_key}")
+        return BuildResultSpec(build_type=self.build_type)
+
+    def build_modules(
+        self,
+        project: BuckyProject,
+        module_keys: List[str],
+        context: BuildContext,
+    ) -> Dict[str, BuildResult]:
+        return build_web_modules(project, module_keys)

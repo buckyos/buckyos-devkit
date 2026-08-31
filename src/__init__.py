@@ -4,7 +4,7 @@ BuckyOS DevKit - Shared development script library for BuckyOS
 Contains tools for building, installation, remote management, etc.
 """
 
-__version__ = "0.1.27"
+__version__ = "0.7.33"
 
 # Import core components for external use
 from .cert_mgr import CertManager
@@ -15,8 +15,9 @@ from . import cert_mgr
 from .project import (
     BuckyProject,
     AppInfo,
+    NoneModuleInfo,
     WebModuleInfo,
-    WebPikgModuleInfo,
+    PikgModuleConfig,
     RustModuleInfo
 )
 
@@ -37,8 +38,9 @@ __all__ = [
     # Project configuration
     'BuckyProject',
     'AppInfo',
+    'NoneModuleInfo',
     'WebModuleInfo',
-    'WebPikgModuleInfo',
+    'PikgModuleConfig',
     'RustModuleInfo',
     
     # Installation

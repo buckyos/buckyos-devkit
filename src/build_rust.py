@@ -11,7 +11,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional,Dict
 
-from .project import BuckyProject, RustModuleInfo
+from .buckyos_kit import get_execute_name
+from .module_build import BuildArtifact, BuildContext, BuildResult, BuildResultSpec
+from .project import BuckyProject, ModuleInfo, RustModuleInfo
 
 _MUSL_TOOL_ENV_SUFFIXES = {
     "CC": "gcc",
@@ -443,13 +445,44 @@ def _copy_timing_reports(
         shutil.copy2(report, target_file)
         print(f"Copied Cargo timings report: {report} => {target_file}")
 
+def _rust_build_result(
+    project: BuckyProject,
+    module_name: str,
+    rust_target: str,
+) -> BuildResult:
+    target_dir = _resolve_rust_target_dir(project)
+    if rust_target and is_cross_compile_target(rust_target):
+        source_path = target_dir / rust_target / "release" / module_name
+    else:
+        source_path = target_dir / "release" / module_name
+    source_path = Path(get_execute_name(source_path))
+    return BuildResult(
+        module_key=module_name,
+        build_type="rust",
+        work_dir=project.base_dir.resolve(),
+        artifacts=[
+            BuildArtifact(
+                role="executable",
+                path=source_path,
+                kind="file",
+                install_name=module_name,
+                executable=True,
+            )
+        ],
+        parameters={
+            "rust_target": rust_target,
+            "target_dir": target_dir,
+        },
+    )
+
+
 def build_rust_modules(
     project: BuckyProject,
     rust_target: str,
     selected_modules: list[str] | None = None,
     timings: bool = False,
     timings_dir: str | Path | None = None,
-):
+) -> Dict[str, BuildResult]:
     print(f"🚀 Building Rust code,target_dir is {project.rust_target_dir},target is {rust_target}")
     env = os.environ.copy()
     build_env = get_build_metadata(str(project.base_dir))
@@ -468,23 +501,23 @@ def build_rust_modules(
     timings = timings or timings_dir is not None
     previous_timing_reports = _get_timing_reports(target_dir) if timings_dir is not None else []
 
+    rust_modules = [
+        module_name
+        for module_name, module_info in project.modules.items()
+        if isinstance(module_info, RustModuleInfo)
+    ]
+    if selected_modules is not None:
+        selected_set = set(selected_modules)
+        rust_modules = [module_name for module_name in rust_modules if module_name in selected_set]
+    if not rust_modules:
+        print("No Rust modules selected; skipping Rust build.")
+        return {}
+
     cross_compile_env_vars = get_cross_compile_env_vars_by_target(rust_target)
     cargo_args = ["cargo", "build", "--release", "--target-dir", str(target_dir)]
     if timings:
         cargo_args.append("--timings")
     if selected_modules is not None:
-        rust_modules = [
-            module_name
-            for module_name, module_info in project.modules.items()
-            if isinstance(module_info, RustModuleInfo)
-        ]
-        selected_set = set(selected_modules)
-        rust_modules = [module_name for module_name in rust_modules if module_name in selected_set]
-
-        if not rust_modules:
-            print("No Rust modules selected; skipping Rust build.")
-            return
-
         for module_name in rust_modules:
             cargo_args.extend(["-p", project.modules[module_name].name])
 
@@ -517,4 +550,35 @@ def build_rust_modules(
         _copy_timing_reports(project, target_dir, timings_dir, previous_timing_reports)
 
     print(f'✅ Build Rust Modules completed')
+    return {
+        module_name: _rust_build_result(project, module_name, rust_target)
+        for module_name in rust_modules
+    }
+
+
+class RustBuilder:
+    build_type = "rust"
+
+    def plan(self, module_key: str, module: ModuleInfo) -> BuildResultSpec:
+        if not isinstance(module, RustModuleInfo):
+            raise ValueError(f"Rust builder received non-Rust module {module_key}")
+        return BuildResultSpec(
+            build_type=self.build_type,
+            required_artifact_roles=("executable",),
+        )
+
+    def build_modules(
+        self,
+        project: BuckyProject,
+        module_keys: list[str],
+        context: BuildContext,
+    ) -> Dict[str, BuildResult]:
+        selected_modules = None if context.full_build else module_keys
+        return build_rust_modules(
+            project,
+            context.rust_target,
+            selected_modules=selected_modules,
+            timings=context.timings,
+            timings_dir=context.timings_dir,
+        )
 

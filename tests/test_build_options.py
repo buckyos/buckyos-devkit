@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from src.project import AppInfo, BuckyProject, RustModuleInfo, WebModuleInfo, WebPikgModuleInfo
+from src.project import AppInfo, BuckyProject, RustModuleInfo, WebModuleInfo
 
 build = importlib.import_module("src.build")
 build_rust = importlib.import_module("src.build_rust")
@@ -18,7 +18,11 @@ class BuildAppOptionTests(unittest.TestCase):
             modules={
                 "daemon": RustModuleInfo(name="daemon"),
                 "frontend": WebModuleInfo(name="frontend", src_dir=Path("web/frontend")),
-                "web_package": WebPikgModuleInfo(name="web_package", src_dir=Path("web/package")),
+                "web_package": WebModuleInfo(
+                    name="web_package",
+                    src_dir=Path("web/package"),
+                    format="pikg",
+                ),
                 "unused": RustModuleInfo(name="unused"),
             },
             apps={

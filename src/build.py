@@ -3,10 +3,21 @@ import platform
 from pathlib import Path
 from typing import Optional
 
-from .build_web_apps import build_web_modules, build_web_pikg_modules
-from .build_rust import build_rust_modules
-from .project import BuckyProject, WebModuleInfo, WebPikgModuleInfo, RustModuleInfo
-from .prepare_rootfs import copy_build_results
+from .build_none import NoneBuilder
+from .build_rust import RustBuilder
+from .build_web_apps import WebBuilder
+from .formatters import FilesFormatter, PikgFormatter
+from .module_build import (
+    BuildContext,
+    BuilderRegistry,
+    FormatterRegistry,
+    collect_install_references,
+)
+from .project import BuckyProject, WebModuleInfo
+
+
+BUILDERS = BuilderRegistry([NoneBuilder(), WebBuilder(), RustBuilder()])
+FORMATTERS = FormatterRegistry([FilesFormatter(), PikgFormatter()])
 
 
 BUILD_HELP = """usage: buckyos-build [-h] [--skip-web] [--timings] [--timings-dir DIR]
@@ -145,14 +156,7 @@ def _prompt_select_modules(
             continue
         if skip_web_module and isinstance(module_info, WebModuleInfo):
             continue
-        if isinstance(module_info, WebPikgModuleInfo):
-            module_type = "web-pikg"
-        elif isinstance(module_info, WebModuleInfo):
-            module_type = "web"
-        elif isinstance(module_info, RustModuleInfo):
-            module_type = "rust"
-        else:
-            continue
+        module_type = f"{module_info.type}/{module_info.format}"
         selectable.append((module_name, module_type))
 
     if not selectable:
@@ -205,17 +209,64 @@ def build(
     timings: bool = False,
     timings_dir: Path | None = None,
 ):
-    if not skip_web_module:
-        build_web_modules(project, None if selected_modules is None else list(selected_modules))
-        build_web_pikg_modules(project, None if selected_modules is None else list(selected_modules))
-    build_rust_modules(
-        project,
-        rust_target,
-        None if selected_modules is None else list(selected_modules),
-        timings,
-        timings_dir,
+    project.validate()
+    selected_set = None if selected_modules is None else set(selected_modules)
+    module_keys = [
+        module_key
+        for module_key, module in project.modules.items()
+        if (selected_set is None or module_key in selected_set)
+        and not (skip_web_module and isinstance(module, WebModuleInfo))
+    ]
+
+    plans = {}
+    for module_key in module_keys:
+        module = project.modules[module_key]
+        builder = BUILDERS.require(module.type)
+        formatter = FORMATTERS.require(module.format)
+        if (
+            formatter.supported_build_types is not None
+            and module.type not in formatter.supported_build_types
+        ):
+            raise ValueError(
+                f"Formatter {module.format} does not support builder type {module.type} "
+                f"for module {module_key}"
+            )
+        plans[module_key] = builder.plan(module_key, module)
+
+    context = BuildContext(
+        rust_target=rust_target,
+        full_build=selected_modules is None,
+        timings=timings,
+        timings_dir=timings_dir,
     )
-    copy_build_results(project, skip_web_module, rust_target, None if selected_modules is None else list(selected_modules))
+    results = {}
+    for build_type in dict.fromkeys(project.modules[key].type for key in module_keys):
+        builder = BUILDERS.require(build_type)
+        build_keys = [
+            module_key
+            for module_key in module_keys
+            if project.modules[module_key].type == build_type
+        ]
+        results.update(builder.build_modules(project, build_keys, context))
+
+    for module_key in module_keys:
+        if module_key not in results:
+            raise ValueError(f"Builder did not return a BuildResult for module {module_key}")
+        results[module_key].validate(plans[module_key])
+
+    records = []
+    for module_key in module_keys:
+        module = project.modules[module_key]
+        formatter = FORMATTERS.require(module.format)
+        records.extend(
+            formatter.materialize(
+                project,
+                module_key,
+                results[module_key],
+                collect_install_references(project, module_key),
+            )
+        )
+    return records
 
 def build_main(argv: list[str] | None = None):
     skip_web_module = False
@@ -326,7 +377,7 @@ def build_main(argv: list[str] | None = None):
     if config_file is None:
         print("Error: No bucky_project.json or bucky_project.yaml configuration file found in current directory or current directory/src")
         sys.exit(1)
-    
+
     print(f"Loading project configuration from: {config_file}")
     local_config_file = BuckyProject.get_project_local_config_file(config_file)
     overlay_files = []
@@ -365,6 +416,6 @@ def build_main(argv: list[str] | None = None):
 
     print(f"Rust target is : {target}")
     build(bucky_project, target, skip_web_module, selected_modules, timings, timings_dir)
-    
+
 if __name__ == "__main__":
     build_main()

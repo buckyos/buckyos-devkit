@@ -18,9 +18,8 @@ project = BuckyProject.from_file('buckyos.json')
 print(f"项目名称: {project.name}")
 print(f"模块数量: {len(project.modules)}")
 
-# 构建项目
-from buckyos_devkit.build_web_apps import build_web_modules
-build_web_modules(project)
+# 完整构建请在项目目录运行 buckyos-build；
+# 不要直接调用某个低层 builder，否则不会执行 formatter。
 ```
 
 ### 方式 2: 从 YAML 文件加载
@@ -45,13 +44,11 @@ project = BuckyProject(
 # 添加模块
 project.add_web_module('frontend', WebModuleInfo(
     name='frontend',
-    src_dir=Path('web/frontend'),
-    target_dir=[Path('rootfs/modules/frontend')]
+    src_dir=Path('web/frontend')
 ))
 
 project.add_rust_module('daemon', RustModuleInfo(
-    name='daemon',
-    target_dir=[Path('rootfs/bin')]
+    name='daemon'
 ))
 
 # 保存到文件
@@ -70,19 +67,16 @@ project.save('buckyos.json')  # 或 'buckyos.yaml'
     "node_active": {
       "type": "web",
       "name": "node_active",
-      "src_dir": "kernel/node_active",
-      "target_dir": ["rootfs/modules/node_active"]
+      "src_dir": "kernel/node_active"
     },
     "admin_panel": {
       "type": "web",
       "name": "admin_panel",
-      "src_dir": "modules/admin",
-      "target_dir": ["rootfs/modules/admin"]
+      "src_dir": "modules/admin"
     },
     "core_daemon": {
       "type": "rust",
-      "name": "core_daemon",
-      "target_dir": ["rootfs/bin"]
+      "name": "core_daemon"
     }
   },
   "rust_env": {
@@ -102,26 +96,28 @@ modules:
     type: web
     name: node_active
     src_dir: kernel/node_active
-    target_dir:
-      - rootfs/modules/node_active
   
   admin_panel:
     type: web
     name: admin_panel
     src_dir: modules/admin
-    target_dir:
-      - rootfs/modules/admin
 
   preinstall_app:
-    type: web-pikg
+    format: pikg
     name: preinstall_app
     src_dir: apps/preinstall_app
   
   core_daemon:
     type: rust
     name: core_daemon
-    target_dir:
-      - rootfs/bin
+
+apps:
+  system:
+    name: system
+    rootfs: rootfs
+    default_target_rootfs: /opt/system
+    modules:
+      preinstall_app: data/cache/preinstall-app.pikg
 
 rust_env:
   RUSTFLAGS: "-C target-feature=+crt-static"
@@ -157,49 +153,70 @@ rust_env:
 
 覆盖规则是字典深合并，所以这里的 `rust_env` 会和主配置里的 `rust_env` 合并；同名 key 以本地配置为准。也可以通过 `BUCKYOS_PROJECT_LOCAL_CONFIG=/path/to/local.yaml` 指定本地覆盖文件。
 
+### None 模块字段
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `type` | string | ❌ | 固定为 "none"；省略 `type` 时也默认为 "none" |
+| `format` | string | ❌ | 产物格式，缺省为 "files"，当前可用组合为 "pikg" |
+| `name` | string | ✅ | 模块名称 |
+| `src_dir` | string | ✅ | formatter 的工作目录（相对于 base_dir） |
+
+None builder 不执行任何命令，只把解析后的 `src_dir` 作为
+`BuildResult.work_dir` 交给 formatter。当前 `files` formatter 仅支持 Web 和
+Rust；`none/files` 可作为以后静态文件策略的扩展点。
+
 ### Web 模块字段
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | `type` | string | ✅ | 固定为 "web" |
+| `format` | string | ❌ | 产物格式，缺省为 "files"，也可设为 "pikg" |
 | `name` | string | ✅ | 模块名称 |
 | `src_dir` | string | ✅ | 源代码目录（相对于 base_dir） |
-| `target_dir` | array | ❌ | 构建产物输出目录列表 |
 
 ### Rust 模块字段
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | `type` | string | ✅ | 固定为 "rust" |
+| `format` | string | ❌ | 产物格式，缺省为 "files"，也可设为 "pikg" |
 | `name` | string | ✅ | 模块名称 |
-| `target_dir` | array | ❌ | 编译产物输出目录列表 |
 
-### Web PIKG 模块字段
+### PIKG 产物字段
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `type` | string | ✅ | 固定为 "web-pikg" |
-| `name` | string | ✅ | 模块名称 |
-| `src_dir` | string | ✅ | 源代码目录（相对于 base_dir） |
+| `format` | string | ✅ | 固定为 "pikg" |
+| `pikg.meta_dir` | string | ❌ | metadata 目录，缺省为 "dapp_meta" |
 
-`web-pikg` 和 `web` 使用相同的 pnpm 依赖安装、GitHub 依赖更新及 `pnpm run build` 流程，但不会把 `dist/` 复制到 app rootfs；模块自身的构建脚本负责生成和放置 PIKG 相关文件。
+`type: web, format: pikg` 使用普通 Web builder，因此 Web builder 固定执行
+`pnpm install --no-lockfile` 和 `pnpm run build`，既不读取也不生成
+`pnpm-lock.yaml`，也不执行单独的 `pnpm update`。因此 `latest` 依赖在每次
+构建时重新解析。
+
+Web builder 只返回 module work directory，不要求 `dist/`。缺省的
+`files/web` formatter 会检查并复制 `dist/`；`pikg` formatter 则解析
+`<meta_dir>/pikg.json`，通过 `npx --yes buckyos@latest` 调用 pikg
+build/pack/info，并将验证后的单个 pikg 文件落到同 key
+`apps.<app>.modules` 声明的 staging 路径。formatter 不要求 module 自己安装
+`buckyos` npm 包。项目自己的 builder 必须先完成全部项目特有组装。
+
+`pikg` formatter 不限制 builder 类型。任何 builder 只要返回有效的
+`BuildResult.work_dir`，并已在其中准备好 metadata 声明的 source，就使用同一套
+build/pack/info、校验和事务落位流程；它不会按 Web、Rust、None 或其他 builder
+分支。
+
+`type: web-pikg` 不再支持，也没有兼容转换。
 
 ## 💡 使用场景
 
 ### 场景 1: 持续集成/部署
 
 ```bash
-# CI/CD 脚本
 #!/bin/bash
-
-# 从配置文件加载项目并构建
-python3 << EOF
-from buckyos_devkit.project import BuckyProject
-from buckyos_devkit.build_web_apps import build_web_modules
-
-project = BuckyProject.from_file('buckyos.json')
-build_web_modules(project)
-EOF
+# buckyos-build 会依次执行 builder 和 formatter
+buckyos-build
 ```
 
 ### 场景 2: 多环境配置
