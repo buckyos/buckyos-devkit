@@ -4,6 +4,7 @@ from pathlib import Path
 import sys
 from typing import Optional
 
+from ..console import configure_console_output
 from .worksapce import Workspace
 
 
@@ -327,6 +328,7 @@ def handle_run(workspace: Workspace, args: argparse.Namespace) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    configure_console_output()
     parser = build_parser()
     args = parser.parse_args(argv)
 

@@ -3,6 +3,7 @@ import platform
 from pathlib import Path
 from typing import Optional
 
+from .console import configure_console_output
 from .build_none import NoneBuilder
 from .build_rust import RustBuilder
 from .build_web_apps import WebBuilder
@@ -269,6 +270,7 @@ def build(
     return records
 
 def build_main(argv: list[str] | None = None):
+    configure_console_output()
     skip_web_module = False
     args = sys.argv[1:] if argv is None else list(argv)
     if _has_help_arg(args):

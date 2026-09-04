@@ -9,6 +9,7 @@ import subprocess
 import sys
 from typing import Optional
 
+from .console import configure_console_output
 from .buckyos_kit import ensure_executable, get_execute_name, get_buckyos_root
 from .project import AppInfo, BuckyProject, WebModuleInfo
 
@@ -751,6 +752,7 @@ def _run_install(
 
 
 def install_main(argv: list[str] | None = None):
+    configure_console_output()
     args = sys.argv[1:] if argv is None else list(argv)
     if _has_help_arg(args):
         prog = Path(sys.argv[0]).name if argv is None else "buckyos-install"

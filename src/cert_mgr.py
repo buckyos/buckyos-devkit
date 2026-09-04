@@ -8,6 +8,8 @@ import tempfile
 import argparse
 from pathlib import Path
 
+from .console import configure_console_output
+
 
 class CertManager:
     """Certificate manager using openssl command-line tools"""
@@ -401,6 +403,7 @@ class CertManager:
 
 def main():
     """Command-line entry point"""
+    configure_console_output()
     parser = argparse.ArgumentParser(description="BuckyOS Test Certificate Manager")
     subparsers = parser.add_subparsers(dest="command", help="Command to execute")
     

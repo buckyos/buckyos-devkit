@@ -6,6 +6,8 @@ import socket
 import subprocess
 from typing import Optional, Sequence, Tuple
 
+from .console import configure_console_output
+
 
 DEFAULT_DNS_SERVER = "207.246.96.13"
 DEFAULT_PORT_HOST = "207.246.96.13"
@@ -88,6 +90,7 @@ def check_cert(label: str, host: str, port: int, verbose: bool) -> bool:
 
 
 def main() -> None:
+    configure_console_output()
     example_text = (
         "examples:\n"
         "  buckyos-sn-test\n"
