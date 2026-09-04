@@ -15,6 +15,40 @@ def _mock_which_factory(resolved_tools):
     return _mock_which
 
 
+class RustTargetEnvironmentTests(unittest.TestCase):
+    def test_gnu_target_never_forces_static_crt(self):
+        for host_target in (
+            "aarch64-unknown-linux-gnu",
+            "x86_64-unknown-linux-gnu",
+        ):
+            with self.subTest(host_target=host_target):
+                self.assertEqual(
+                    build_rust.get_env_vars_by_target(
+                        "aarch64-unknown-linux-gnu",
+                        host_target,
+                    ),
+                    {},
+                )
+
+    def test_cross_musl_target_forces_static_crt(self):
+        self.assertEqual(
+            build_rust.get_env_vars_by_target(
+                "x86_64-unknown-linux-musl",
+                "x86_64-unknown-linux-gnu",
+            ),
+            {"RUSTFLAGS": "-C target-feature=+crt-static"},
+        )
+
+    def test_native_musl_target_does_not_override_host_flags(self):
+        self.assertEqual(
+            build_rust.get_env_vars_by_target(
+                "aarch64-unknown-linux-musl",
+                "aarch64-unknown-linux-musl",
+            ),
+            {},
+        )
+
+
 class BuildRustMuslToolchainTests(unittest.TestCase):
     def test_x86_64_musl_prefers_triplet_toolchain(self):
         with patch.object(build_rust, "get_host_target", return_value="x86_64-unknown-linux-gnu"):

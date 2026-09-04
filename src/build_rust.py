@@ -89,11 +89,10 @@ def clean_rust_build(project: BuckyProject):
     print(f"Cleaning build artifacts at ${project.rust_target_dir}")
     subprocess.run(["cargo", "clean", "--target-dir", project.rust_target_dir], check=True, cwd=project.rust_target_dir)
 
-def get_env_vars_by_target(target: str) -> Dict[str, str]:
+def get_env_vars_by_target(target: str, host_target: Optional[str] = None) -> Dict[str, str]:
     env_vars = {}
-    if target == "x86_64-unknown-linux-musl":
-        env_vars["RUSTFLAGS"] = "-C target-feature=+crt-static"
-    elif target == "aarch64-unknown-linux-gnu":
+    host_target = host_target or get_host_target()
+    if "musl" in target and target != host_target:
         env_vars["RUSTFLAGS"] = "-C target-feature=+crt-static"
     return env_vars
 
