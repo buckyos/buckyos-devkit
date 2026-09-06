@@ -5,15 +5,15 @@
 ### 从 GitHub 安装
 
 ```bash
-pip install "buckyos-devkit @ git+https://github.com/buckyos/bucky-devkit.git"
+pip install "buckyos-devkit @ git+https://github.com/buckyos/buckyos-devkit.git@main"
 ```
 
 ### 本地开发安装
 
 ```bash
 # 克隆仓库
-git clone https://github.com/buckyos/bucky-devkit.git
-cd bucky-devkit
+git clone --branch main https://github.com/buckyos/buckyos-devkit.git
+cd buckyos-devkit
 
 # 可编辑模式安装
 pip install -e .

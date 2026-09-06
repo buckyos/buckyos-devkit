@@ -22,7 +22,7 @@ source test_devkit/bin/activate
 ### 方法 2: 从 GitHub 安装（项目发布后）
 
 ```bash
-pip install "buckyos-devkit @ git+https://github.com/buckyos/bucky-devkit.git"
+pip install "buckyos-devkit @ git+https://github.com/buckyos/buckyos-devkit.git@main"
 ```
 
 ## 🛠️ 可用的命令行工具

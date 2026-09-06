@@ -130,14 +130,8 @@ echo $PATH
 项目推送到 GitHub 后，其他用户可以这样安装：
 
 ```bash
-# 从 GitHub 安装
-pip install "buckyos-devkit @ git+https://github.com/buckyos/bucky-devkit.git"
-
-# 从 GitHub 安装特定分支
-pip install "buckyos-devkit @ git+https://github.com/buckyos/bucky-devkit.git@main"
-
-# 从 GitHub 安装特定标签
-pip install "buckyos-devkit @ git+https://github.com/buckyos/bucky-devkit.git@v0.1.0"
+# 从 GitHub 的 main 分支安装
+pip install "buckyos-devkit @ git+https://github.com/buckyos/buckyos-devkit.git@main"
 ```
 
 ## 完整的测试流程示例
