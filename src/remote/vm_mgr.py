@@ -11,8 +11,13 @@ import sys
 import json
 import re
 import base64
+import contextlib
+import secrets
+import shutil
 import tempfile
+import threading
 import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(current_dir)
@@ -596,6 +601,51 @@ class MultipassVMBackend(VMBackend):
             return False
 
 
+@contextlib.contextmanager
+def _one_file_http_endpoint(bind_host: str, local_path: str):
+    """Serve GET (download) and accept PUT (upload) of one local file under a random path."""
+    token = secrets.token_hex(16)
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            if self.path != f"/{token}":
+                self.send_error(404)
+                return
+            self.send_response(200)
+            self.send_header("Content-Length", str(os.path.getsize(local_path)))
+            self.end_headers()
+            with open(local_path, "rb") as f:
+                shutil.copyfileobj(f, self.wfile)
+
+        def do_PUT(self):
+            if self.path != f"/{token}":
+                self.send_error(404)
+                return
+            remaining = int(self.headers.get("Content-Length", "0"))
+            with open(local_path, "wb") as f:
+                while remaining > 0:
+                    chunk = self.rfile.read(min(remaining, 1024 * 1024))
+                    if not chunk:
+                        break
+                    f.write(chunk)
+                    remaining -= len(chunk)
+            self.send_response(200 if remaining == 0 else 400)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+
+        def log_message(self, format, *args):
+            pass
+
+    server = ThreadingHTTPServer((bind_host, 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield f"http://{bind_host}:{server.server_address[1]}/{token}"
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
 class PVEVMBackend(VMBackend):
     """Proxmox VE backend using ``qm`` and the QEMU guest agent.
 
@@ -603,6 +653,8 @@ class PVEVMBackend(VMBackend):
     ``template_vmid`` (recommended) or ``image``, ``storage`` (local-lvm),
     ``bridge`` (vmbr0), ``ciuser`` (root), ``sshkeys``, ``ipconfig0`` (ip=dhcp),
     and ``snippet_storage`` for custom ``vm_template`` cloud-init YAML.
+    Host-specific defaults for these keys can be given as a JSON object in
+    ``BUCKYOS_PVE_VM_PARAMS``; the group's own ``vm_params`` take precedence.
     The guest image/template must have qemu-guest-agent installed and enabled.
     """
 
@@ -612,11 +664,21 @@ class PVEVMBackend(VMBackend):
         self.node = self._detect_node()
 
     @staticmethod
-    def _run(args, *, check=True, input_data=None, timeout=300):
+    def _run(args, *, check=True, input_data=None, timeout=300, text=True):
         return subprocess.run(
-            args, input=input_data, capture_output=True, text=True,
+            args, input=input_data, capture_output=True, text=text,
             check=check, timeout=timeout,
         )
+
+    @staticmethod
+    def _host_vm_params() -> dict:
+        raw = os.environ.get("BUCKYOS_PVE_VM_PARAMS")
+        if not raw:
+            return {}
+        params = json.loads(raw)
+        if not isinstance(params, dict):
+            raise ValueError("BUCKYOS_PVE_VM_PARAMS must be a JSON object")
+        return params
 
     def _detect_node(self) -> str:
         try:
@@ -656,9 +718,9 @@ class PVEVMBackend(VMBackend):
         return max(1, int(number * {"": 1, "K": 1 / 1024, "M": 1, "G": 1024, "T": 1048576}[unit]))
 
     def create_vm(self, vm_name: str, config: VMConfig) -> bool:
-        params = config.vm_params or {}
         vmid = None
         try:
+            params = {**self._host_vm_params(), **(config.vm_params or {})}
             if self.is_vm_exists(vm_name):
                 print(f"PVE VM {vm_name} already exists")
                 return False
@@ -799,11 +861,26 @@ class PVEVMBackend(VMBackend):
             time.sleep(2)
         raise TimeoutError(f"QEMU guest agent did not become ready for VM {vmid}")
 
+    def _wait_until_ready(self, vmid: int, timeout: int = 180):
+        """After (re)booting, wait for the guest agent and a bridge-reachable IPv4."""
+        deadline = time.monotonic() + timeout
+        self._wait_for_agent(vmid, timeout)
+        while self._host_address_for(vmid) is None:
+            if time.monotonic() >= deadline:
+                raise TimeoutError(f"PVE VM {vmid} has no IPv4 address reachable from this host")
+            time.sleep(2)
+
     def delete_vm(self, vm_name: str) -> bool:
         try:
             vmid = self._vmid(vm_name)
+            config = self._run(["qm", "config", str(vmid)], check=False).stdout
+            snippet = re.search(rf"^cicustom:.*\buser=(\S+:snippets/buckyos-{vmid}-[^,\s]+)", config, re.M)
             self._run(["qm", "stop", str(vmid)], check=False)
             self._run(["qm", "destroy", str(vmid), "--purge", "1", "--destroy-unreferenced-disks", "1"])
+            if snippet:
+                path = self._run(["pvesm", "path", snippet.group(1)], check=False).stdout.strip()
+                if path:
+                    Path(path).unlink(missing_ok=True)
             return True
         except (OSError, subprocess.SubprocessError, ValueError) as e:
             print(f"Failed to delete PVE VM {vm_name}: {e}")
@@ -815,37 +892,117 @@ class PVEVMBackend(VMBackend):
         except (OSError, ValueError) as e:
             return None, str(e), None
 
-    def _exec_vmid(self, vmid: int, command: str, timeout: int = 300) -> tuple:
+    def _exec_vmid(self, vmid: int, command: str, timeout: int = 300,
+                   input_data: bytes | None = None) -> tuple:
+        args = ["qm", "guest", "exec", str(vmid), "--timeout", str(timeout)]
+        if input_data is not None:
+            args += ["--pass-stdin", "1"]
+        if not command.isascii():
+            # Non-ASCII arguments make guest-exec time out and stall the agent.
+            encoded = base64.b64encode(command.encode("utf-8")).decode("ascii")
+            command = f'eval "$(printf %s {encoded} | base64 -d)"'
         try:
-            result = self._run(["qm", "guest", "exec", str(vmid),
-                                "--timeout", str(timeout), "--", "bash", "-c", command],
-                               check=False, timeout=timeout + 10)
+            result = self._run(args + ["--", "bash", "-c", command],
+                               check=False, timeout=timeout + 10,
+                               input_data=input_data, text=input_data is None)
+            stdout, stderr = result.stdout, result.stderr
+            if input_data is not None:
+                stdout = stdout.decode(errors="replace")
+                stderr = stderr.decode(errors="replace")
             if result.returncode != 0:
-                return result.stdout, result.stderr, result.returncode
-            data = json.loads(result.stdout)
-            return data.get("out-data", ""), data.get("err-data", ""), data.get("exitcode", 0)
+                return stdout, stderr, result.returncode
+            data = json.loads(stdout)
+            return (self._agent_text(data.get("out-data", "")),
+                    self._agent_text(data.get("err-data", "")),
+                    data.get("exitcode", 0))
         except subprocess.TimeoutExpired:
             return None, "Command execution timed out", None
         except (OSError, ValueError, json.JSONDecodeError) as e:
             return None, str(e), None
 
-    def _file_write(self, vmid: int, remote_path: str, data: bytes):
-        # Keep request arguments below Linux's argv limit, then append in-guest.
-        chunk_path = f"/tmp/buckyos-qga-{os.getpid()}"
-        _, stderr, code = self._exec_vmid(vmid, f": > {shlex.quote(remote_path)}")
+    def _vm_ipv4(self, vmid: int) -> list[str]:
+        result = self._run(["qm", "guest", "cmd", str(vmid), "network-get-interfaces"])
+        ips = []
+        for interface in json.loads(result.stdout):
+            for item in interface.get("ip-addresses", []):
+                address = item.get("ip-address")
+                if item.get("ip-address-type") == "ipv4" and address != "127.0.0.1":
+                    ips.append(address)
+        return ips
+
+    def _host_address_for(self, vmid: int) -> str | None:
+        """Address of this host that the VM reaches over the bridge (None if unknown)."""
+        try:
+            for ip in self._vm_ipv4(vmid):
+                route = self._run(["ip", "-4", "route", "get", ip], check=False).stdout
+                # Skip addresses that are also local here (e.g. both sides' docker0).
+                match = re.search(r"\bsrc (\S+)", route)
+                if match and not route.startswith("local "):
+                    return match.group(1)
+        except (OSError, subprocess.SubprocessError, ValueError):
+            pass
+        return None
+
+    # `qm guest exec --pass-stdin` forwards at most 1 MiB per call, and the guest
+    # agent channel moves roughly 0.5 MB/s, so it is only the fallback transport.
+    _STDIN_CHUNK = 1024 * 1024
+
+    def _upload(self, vmid: int, local_path: str, remote_path: str):
+        # Write a sibling temp file and rename it over the target, so a running
+        # executable can be replaced (writing it in place fails with ETXTBSY).
+        tmp = f"{remote_path}.devtest-{os.getpid()}"
+        quoted_tmp = shlex.quote(tmp)
+        try:
+            if not self._upload_http(vmid, local_path, tmp):
+                self._upload_agent(vmid, local_path, tmp)
+            _, stderr, code = self._exec_vmid(vmid, f"mv -f {quoted_tmp} {shlex.quote(remote_path)}")
+            if code != 0:
+                raise RuntimeError(stderr or f"cannot replace {remote_path}")
+        except RuntimeError:
+            self._exec_vmid(vmid, f"rm -f {quoted_tmp}")
+            raise
+
+    def _upload_http(self, vmid: int, local_path: str, remote_path: str) -> bool:
+        host = self._host_address_for(vmid)
+        if host is None:
+            return False
+        with _one_file_http_endpoint(host, local_path) as url:
+            _, stderr, code = self._exec_vmid(
+                vmid, f"curl -fsS -o {shlex.quote(remote_path)} {shlex.quote(url)}")
+        if code != 0:
+            print(f"HTTP transfer to VM {vmid} failed, falling back to the guest agent: {stderr}")
+        return code == 0
+
+    def _upload_agent(self, vmid: int, local_path: str, remote_path: str):
+        quoted = shlex.quote(remote_path)
+        _, stderr, code = self._exec_vmid(vmid, f": > {quoted}")
         if code != 0:
             raise RuntimeError(stderr or f"cannot create {remote_path}")
-        try:
-            for offset in range(0, len(data), 48 * 1024):
-                encoded = base64.b64encode(data[offset:offset + 48 * 1024]).decode("ascii")
-                self._run(["pvesh", "create", f"/nodes/{self.node}/qemu/{vmid}/agent/file-write",
-                           "--file", chunk_path, "--content", encoded, "--encode", "0"])
-                _, stderr, code = self._exec_vmid(
-                    vmid, f"cat {shlex.quote(chunk_path)} >> {shlex.quote(remote_path)}")
+        with open(local_path, "rb") as f:
+            while chunk := f.read(self._STDIN_CHUNK):
+                _, stderr, code = self._exec_vmid(vmid, f"cat >> {quoted}", input_data=chunk)
                 if code != 0:
                     raise RuntimeError(stderr or f"cannot append to {remote_path}")
-        finally:
-            self._exec_vmid(vmid, f"rm -f {shlex.quote(chunk_path)}")
+
+    def _download(self, vmid: int, remote_path: str, local_path: str):
+        host = self._host_address_for(vmid)
+        if host is not None:
+            with _one_file_http_endpoint(host, local_path) as url:
+                _, stderr, code = self._exec_vmid(
+                    vmid, f"curl -fsS -T {shlex.quote(remote_path)} {shlex.quote(url)}")
+            if code == 0:
+                return
+            print(f"HTTP transfer from VM {vmid} failed, falling back to the guest agent: {stderr}")
+        with open(local_path, "wb") as f:
+            f.write(self._file_read(vmid, remote_path))
+
+    @staticmethod
+    def _agent_text(text: str) -> str:
+        # qm reports the guest's UTF-8 output decoded as Latin-1.
+        try:
+            return text.encode("latin-1").decode("utf-8")
+        except (UnicodeEncodeError, UnicodeDecodeError):
+            return text
 
     def _file_read(self, vmid: int, remote_path: str) -> bytes:
         chunks = []
@@ -869,8 +1026,18 @@ class PVEVMBackend(VMBackend):
         if recursive or os.path.isdir(local_path):
             return self.push_dir(vm_name, local_path, remote_path)
         try:
-            with open(local_path, "rb") as f:
-                self._file_write(self._vmid(vm_name), remote_path, f.read())
+            vmid = self._vmid(vm_name)
+            stdout, stderr, code = self._exec_vmid(
+                vmid,
+                f"dst={shlex.quote(remote_path)}; "
+                f"if [ -d \"$dst\" ]; then dst=\"$dst\"/{shlex.quote(os.path.basename(local_path))}; fi; "
+                f"printf '%s' \"$dst\"",
+            )
+            if code != 0:
+                raise RuntimeError(stderr or f"cannot resolve {remote_path}")
+            self._upload(vmid, local_path, stdout)
+            mode = format(os.stat(local_path).st_mode & 0o7777, "o")
+            self._exec_vmid(vmid, f"chmod {mode} {shlex.quote(stdout)}")
             return True
         except (OSError, subprocess.SubprocessError, ValueError, RuntimeError) as e:
             print(f"Failed to push file to PVE VM {vm_name}: {e}")
@@ -880,9 +1047,9 @@ class PVEVMBackend(VMBackend):
         if recursive:
             return self.pull_dir(vm_name, remote_path, local_path)
         try:
-            data = self._file_read(self._vmid(vm_name), remote_path)
-            with open(local_path, "wb") as f:
-                f.write(data)
+            if os.path.isdir(local_path):
+                local_path = os.path.join(local_path, os.path.basename(remote_path))
+            self._download(self._vmid(vm_name), remote_path, local_path)
             return True
         except (OSError, subprocess.SubprocessError, ValueError, RuntimeError) as e:
             print(f"Failed to pull file from PVE VM {vm_name}: {e}")
@@ -891,48 +1058,45 @@ class PVEVMBackend(VMBackend):
     def push_dir(self, vm_name: str, local_dir: str, remote_dir: str) -> bool:
         try:
             vmid = self._vmid(vm_name)
-            with tempfile.NamedTemporaryFile(suffix=".tar.gz") as archive:
-                subprocess.run(["tar", "-C", local_dir, "-czf", archive.name, "."], check=True)
-                guest_archive = f"/tmp/buckyos-push-{os.getpid()}.tar.gz"
-                with open(archive.name, "rb") as f:
-                    self._file_write(vmid, guest_archive, f.read())
+            # Uncompressed: the bridge is fast and gzip dominated the push time.
+            with tempfile.NamedTemporaryFile(suffix=".tar") as archive:
+                subprocess.run(["tar", "--no-xattrs", "-C", local_dir, "-cf", archive.name, "."], check=True)
+                # /var/tmp: recent Ubuntu images mount /tmp as a small tmpfs
+                guest_archive = f"/var/tmp/buckyos-push-{os.getpid()}.tar"
+                self._upload(vmid, archive.name, guest_archive)
                 _, err, code = self.exec_command(vm_name,
-                    f"mkdir -p {shlex.quote(remote_dir)} && tar -xzf {shlex.quote(guest_archive)} -C {shlex.quote(remote_dir)}; rc=$?; rm -f {shlex.quote(guest_archive)}; exit $rc")
+                    f"mkdir -p {shlex.quote(remote_dir)} && tar -xf {shlex.quote(guest_archive)} -C {shlex.quote(remote_dir)}; rc=$?; rm -f {shlex.quote(guest_archive)}; exit $rc")
+                if code != 0:
+                    print(f"Failed to extract directory in PVE VM {vm_name}: {err}")
                 return code == 0
-        except (OSError, subprocess.SubprocessError, ValueError) as e:
+        except (OSError, subprocess.SubprocessError, ValueError, RuntimeError) as e:
             print(f"Failed to push directory to PVE VM {vm_name}: {e}")
             return False
 
     def pull_dir(self, vm_name: str, remote_dir: str, local_dir: str) -> bool:
-        guest_archive = f"/tmp/buckyos-pull-{os.getpid()}.tar.gz"
+        guest_archive = f"/var/tmp/buckyos-pull-{os.getpid()}.tar.gz"
         try:
             vmid = self._vmid(vm_name)
+            # tar exits 1 when a file (e.g. a live log) changes while it is read
             _, err, code = self.exec_command(vm_name,
-                f"tar -C {shlex.quote(remote_dir)} -czf {shlex.quote(guest_archive)} .")
+                f"tar -C {shlex.quote(remote_dir)} --warning=no-file-changed -czf {shlex.quote(guest_archive)} .; [ $? -le 1 ]")
             if code != 0:
+                print(f"Failed to archive directory in PVE VM {vm_name}: {err}")
                 return False
-            data = self._file_read(vmid, guest_archive)
-            self.exec_command(vm_name, f"rm -f {shlex.quote(guest_archive)}")
             os.makedirs(local_dir, exist_ok=True)
             with tempfile.NamedTemporaryFile(suffix=".tar.gz") as archive:
-                archive.write(data); archive.flush()
-                subprocess.run(["tar", "-C", local_dir, "-xzf", archive.name], check=True)
+                try:
+                    self._download(vmid, guest_archive, archive.name)
+                finally:
+                    self.exec_command(vm_name, f"rm -f {shlex.quote(guest_archive)}")
+                subprocess.run(["tar", "-C", local_dir, "--no-same-owner", "-xzf", archive.name], check=True)
             return True
         except (OSError, subprocess.SubprocessError, ValueError) as e:
             print(f"Failed to pull directory from PVE VM {vm_name}: {e}")
             return False
 
     def get_vm_ip(self, vm_name: str) -> list[str]:
-        vmid = self._vmid(vm_name)
-        result = self._run(["qm", "guest", "cmd", str(vmid), "network-get-interfaces"])
-        data = json.loads(result.stdout)
-        ips = []
-        for interface in data:
-            for item in interface.get("ip-addresses", []):
-                address = item.get("ip-address")
-                if item.get("ip-address-type") == "ipv4" and address != "127.0.0.1":
-                    ips.append(address)
-        return ips
+        return self._vm_ipv4(self._vmid(vm_name))
 
     def is_vm_exists(self, vm_name: str) -> bool:
         try:
@@ -954,6 +1118,7 @@ class PVEVMBackend(VMBackend):
             self._run(["qm", "stop", str(vmid)], check=False)
             self._run(["qm", "rollback", str(vmid), snapshot_name])
             self._run(["qm", "start", str(vmid)])
+            self._wait_until_ready(vmid)
             return True
         except (OSError, subprocess.SubprocessError, ValueError) as e:
             print(f"Failed to restore PVE VM {node_id}: {e}")
@@ -976,7 +1141,11 @@ class PVEVMBackend(VMBackend):
 
     def start_vm(self, node_id: str) -> bool:
         try:
-            return self._lifecycle(["start", str(self._vmid(node_id))])
+            vmid = self._vmid(node_id)
+            if not self._lifecycle(["start", str(vmid)]):
+                return False
+            self._wait_until_ready(vmid)
+            return True
         except (OSError, subprocess.SubprocessError, ValueError) as e:
             print(f"Failed to start PVE VM {node_id}: {e}")
             return False
