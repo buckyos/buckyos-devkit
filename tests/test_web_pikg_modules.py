@@ -608,6 +608,26 @@ class PikgFormatterTests(unittest.TestCase):
                     Path.cwd(),
                 )
 
+    def test_cli_runner_preserves_json_error_on_nonzero_exit(self):
+        completed = SimpleNamespace(
+            returncode=2,
+            stdout=json.dumps({
+                "schema_version": 1,
+                "ok": False,
+                "error": {
+                    "code": "SCHEMA_VALIDATION_FAILED",
+                    "message": "app.json.content_handlers is not allowed",
+                },
+            }),
+            stderr="",
+        )
+        with patch.object(formatters.subprocess, "run", return_value=completed):
+            with self.assertRaises(RuntimeError) as failure:
+                formatters._run_buckyos_json(["buckyos", "pikg", "build"], Path.cwd())
+        self.assertIn("exit code 2", str(failure.exception))
+        self.assertIn("SCHEMA_VALIDATION_FAILED", str(failure.exception))
+        self.assertIn("app.json.content_handlers is not allowed", str(failure.exception))
+
     def test_transaction_rolls_back_all_targets(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
@@ -641,3 +661,15 @@ class PikgFormatterTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class LocalSdkCommandTests(unittest.TestCase):
+    def test_local_cli_preserves_argument_boundaries(self):
+        command = ['node', '/tmp/sdk with spaces/launcher.mjs']
+        with patch.dict(os.environ, {'BUCKYOS_PIKG_COMMAND': json.dumps(command)}):
+            self.assertEqual(formatters._buckyos_command(), command)
+
+    def test_invalid_cli_commands_fail_before_execution(self):
+        for value in ['[]', '{}', '"node"', '["node", ""]', '[1]']:
+            with self.subTest(value=value), patch.dict(os.environ, {'BUCKYOS_PIKG_COMMAND': value}):
+                with self.assertRaises(ValueError):
+                    formatters._buckyos_command()

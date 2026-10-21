@@ -24,6 +24,16 @@ _SHA256 = re.compile(r"^sha256:[0-9a-f]{64}$")
 _BUCKYOS_NPX = ("npx", "--yes", "buckyos@latest")
 
 
+def _buckyos_command() -> List[str]:
+    configured = os.environ.get("BUCKYOS_PIKG_COMMAND")
+    if configured is None:
+        return list(_BUCKYOS_NPX)
+    command = json.loads(configured)
+    if not isinstance(command, list) or not command or not all(isinstance(item, str) and item for item in command):
+        raise ValueError("BUCKYOS_PIKG_COMMAND must be a JSON array of command arguments")
+    return command
+
+
 def _read_json_object(path: Path, label: str) -> Dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
@@ -76,8 +86,9 @@ def _run_buckyos_json(argv: List[str], cwd: Path) -> Dict[str, Any]:
     if result.stderr:
         sys.stderr.write(result.stderr)
     if result.returncode != 0:
+        detail = f"\n{result.stdout.strip()}" if result.stdout.strip() else ""
         raise RuntimeError(
-            f"{' '.join(argv)} failed with exit code {result.returncode}"
+            f"{' '.join(argv)} failed with exit code {result.returncode}{detail}"
         )
     try:
         envelope = json.loads(result.stdout)
@@ -344,7 +355,7 @@ class PikgFormatter:
                 )
 
         sources = _metadata_sources(meta_dir, pikg)
-        build_argv = [*_BUCKYOS_NPX]
+        build_argv = _buckyos_command()
         for source in sources:
             build_argv.extend(["--allow-read", str(source)])
         build_argv.extend(["--output", "json", "pikg", "build", str(meta_dir)])
@@ -367,7 +378,7 @@ class PikgFormatter:
         )
 
         pack_data = _run_buckyos_json(
-            [*_BUCKYOS_NPX, "--output", "json", "pikg", "pack", str(dist_dir)],
+            [*_buckyos_command(), "--output", "json", "pikg", "pack", str(dist_dir)],
             work_dir,
         )
         if pack_data.get("validation") != "passed":
@@ -400,7 +411,7 @@ class PikgFormatter:
             raise ValueError(f"PIKG pack size or digest mismatch for {module_key}")
 
         info_data = _run_buckyos_json(
-            [*_BUCKYOS_NPX, "--output", "json", "pikg", "info", str(pikg_path)],
+            [*_buckyos_command(), "--output", "json", "pikg", "info", str(pikg_path)],
             work_dir,
         )
         if info_data.get("schema_version") != 1 or info_data.get("valid") is not True:

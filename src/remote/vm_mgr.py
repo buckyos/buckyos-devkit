@@ -314,46 +314,85 @@ class MultipassVMBackend(VMBackend):
         except Exception as e:
             return None, str(e), None
     
+    # Host files go through `multipass transfer` stdin/stdout ("-") rather than host paths:
+    # the Linux snap build of multipass can only open host files under $HOME, so staging
+    # roots such as /opt/buckyosvm or /tmp/buckyos-vmtest are invisible to it. Large
+    # streams must not be piped into `multipass exec` stdin, which truncates them (~2MB).
+
+    def _pipe(self, producer: list[str], consumer: list[str], producer_cwd: str | None = None) -> None:
+        env = os.environ.copy()
+        env["COPYFILE_DISABLE"] = "1"  # keep macOS tar from emitting ._ AppleDouble files
+        with tempfile.TemporaryFile() as prod_stderr:
+            prod = subprocess.Popen(producer, cwd=producer_cwd, stdout=subprocess.PIPE, stderr=prod_stderr, env=env)
+            cons = subprocess.Popen(consumer, stdin=prod.stdout, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+            prod.stdout.close()
+            _, cons_err = cons.communicate()
+            prod.wait()
+            prod_stderr.seek(0)
+            prod_err = prod_stderr.read()
+        if prod.returncode != 0 or cons.returncode != 0:
+            message = (prod_err + cons_err).decode(errors="replace").strip()
+            raise RuntimeError(message or f"exit codes {prod.returncode}/{cons.returncode}")
+
+    def _exec_checked(self, vm_name: str, script: str) -> str:
+        stdout, stderr, code = self.exec_command(vm_name, script)
+        if code != 0:
+            raise RuntimeError((stderr or stdout or f"exit code {code}").strip())
+        return stdout
+
     def push_file(self, vm_name: str, local_path: str, remote_path: str, recursive: bool = False) -> bool:
-        """Push file using multipass transfer"""
+        """Push a file into the VM; directories are delegated to push_dir"""
+        if os.path.isdir(local_path):
+            return self.push_dir(vm_name, local_path, remote_path)
         try:
             print(f"push file {local_path} to {vm_name}:{remote_path} ...")
-            cmd = ["multipass", "transfer"]
-            if recursive:
-                cmd.append("-r")
-            cmd.extend([local_path, f"{vm_name}:{remote_path}"])
-            
-            result = subprocess.run(
-                cmd,
-                check=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True
+            dst = self._exec_checked(
+                vm_name,
+                f"dst={shlex.quote(remote_path)}; "
+                f"if [ -d \"$dst\" ]; then dst=\"$dst\"/{shlex.quote(os.path.basename(local_path))}; fi; "
+                f"printf '%s' \"$dst\"",
             )
+            # Write a sibling temp file and rename it over dst, so a running
+            # executable can be replaced (writing it in place fails with ETXTBSY).
+            tmp = f"{dst}.devtest-{os.getpid()}"
+            mode = format(os.stat(local_path).st_mode & 0o7777, "o")
+            try:
+                with open(local_path, "rb") as f:
+                    result = subprocess.run(
+                        ["multipass", "transfer", "-", f"{vm_name}:{tmp}"],
+                        stdin=f,
+                        capture_output=True,
+                    )
+                if result.returncode != 0:
+                    raise RuntimeError(result.stderr.decode(errors="replace").strip())
+                self._exec_checked(
+                    vm_name, f"chmod {mode} {shlex.quote(tmp)} && mv -f {shlex.quote(tmp)} {shlex.quote(dst)}"
+                )
+            except RuntimeError:
+                self.exec_command(vm_name, f"rm -f {shlex.quote(tmp)}")
+                raise
             return True
-        except subprocess.CalledProcessError as e:
-            print(f"Failed to push file to {vm_name}: {e.stderr}")
+        except (OSError, RuntimeError) as e:
+            print(f"Failed to push file to {vm_name}: {e}")
             return False
-    
+
     def pull_file(self, vm_name: str, remote_path: str, local_path: str, recursive: bool = False) -> bool:
-        """Pull file using multipass transfer"""
+        """Pull a file from the VM"""
         try:
             print(f"pull file {vm_name}:{remote_path} to {local_path} ...")
-            cmd = ["multipass", "transfer"]
-            if recursive:
-                cmd.append("-r")
-            cmd.extend([f"{vm_name}:{remote_path}", local_path])
-            
-            result = subprocess.run(
-                cmd,
-                check=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True
-            )
+            if os.path.isdir(local_path):
+                local_path = os.path.join(local_path, os.path.basename(remote_path))
+            with open(local_path, "wb") as f:
+                result = subprocess.run(
+                    ["multipass", "transfer", f"{vm_name}:{remote_path}", "-"],
+                    stdout=f,
+                    stderr=subprocess.PIPE,
+                )
+            if result.returncode != 0:
+                raise RuntimeError(result.stderr.decode(errors="replace").strip())
             return True
-        except subprocess.CalledProcessError as e:
-            print(f"Failed to pull file from {vm_name}: {e.stderr}")
+        except (OSError, RuntimeError) as e:
+            print(f"Failed to pull file from {vm_name}: {e}")
             return False
     
     def get_vm_ip(self, vm_name: str) -> list[str]:
@@ -497,7 +536,7 @@ class MultipassVMBackend(VMBackend):
         return True
     
     def push_dir(self, vm_name: str, local_dir: str, remote_dir: str) -> bool:
-        """Recursively push directory (multipass transfer -r)"""
+        """Recursively push directory (tar archive through multipass transfer stdin)"""
         try:
             quoted_remote_dir = shlex.quote(remote_dir)
             ready_marker = "__BUCKYOS_REMOTE_DIR_READY__"
@@ -515,18 +554,43 @@ class MultipassVMBackend(VMBackend):
                 if stderr:
                     print(f"Failed to prepare remote directory {vm_name}:{remote_dir}: {stderr}")
                 return False
-            src_dir = os.path.join(local_dir, ".")
-            return self.push_file(vm_name, src_dir, remote_dir, recursive=True)
+            print(f"push dir {local_dir} to {vm_name}:{remote_dir} ...")
+            # /var/tmp: recent Ubuntu images mount /tmp as a small tmpfs
+            archive = f"/var/tmp/buckyos-push-{os.getpid()}.tar"
+            try:
+                self._pipe(
+                    ["tar", "--no-xattrs", "-cf", "-", "."],
+                    ["multipass", "transfer", "-", f"{vm_name}:{archive}"],
+                    producer_cwd=local_dir,
+                )
+                self._exec_checked(vm_name, f"tar -C {quoted_remote_dir} -xpf {archive}")
+            finally:
+                self.exec_command(vm_name, f"rm -f {archive}")
+            return True
         except Exception as e:
             print(f"Failed to push dir to {vm_name}: {e}")
             return False
 
     def pull_dir(self, vm_name: str, remote_dir: str, local_dir: str) -> bool:
-        """Recursively pull directory (multipass transfer -r)"""
+        """Recursively pull directory (tar archive through multipass transfer stdout)"""
         try:
-            # Ensure local target directory exists
+            print(f"pull dir {vm_name}:{remote_dir} to {local_dir} ...")
             os.makedirs(local_dir, exist_ok=True)
-            return self.pull_file(vm_name, remote_dir, local_dir, recursive=True)
+            archive = f"/var/tmp/buckyos-pull-{os.getpid()}.tar"
+            # tar exits 1 when a file (e.g. a live log) changes while it is read
+            self._exec_checked(
+                vm_name,
+                f"sudo tar -C {shlex.quote(remote_dir)} --warning=no-file-changed -cf {archive} .; "
+                f"rc=$?; sudo chmod 644 {archive}; [ $rc -le 1 ]",
+            )
+            try:
+                self._pipe(
+                    ["multipass", "transfer", f"{vm_name}:{archive}", "-"],
+                    ["tar", "-C", local_dir, "--no-same-owner", "-xf", "-"],
+                )
+            finally:
+                self.exec_command(vm_name, f"sudo rm -f {archive}")
+            return True
         except Exception as e:
             print(f"Failed to pull dir from {vm_name}: {e}")
             return False
