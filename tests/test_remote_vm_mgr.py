@@ -185,6 +185,61 @@ class PVEBackendTests(unittest.TestCase):
         self.assertEqual(set_cmd[set_cmd.index("--net0") + 1], "virtio,bridge=vmbr1")
         self.assertIn(["qm", "disk", "resize", "120", "scsi0", "8G"], calls)
 
+    def test_creation_waits_fifteen_minutes_by_default_and_accepts_override(self):
+        backend = self._backend()
+        for overrides, expected_timeout in [({}, 900), ({"agent_timeout": 45}, 45)]:
+            with self.subTest(overrides=overrides):
+                config = vm_mgr.VMConfig("sn")
+                config.vm_params = {"template_vmid": 9000, **overrides}
+                completed = subprocess.CompletedProcess([], 0, "120\n", "")
+                with patch.dict(vm_mgr.os.environ, {"BUCKYOS_PVE_VM_PARAMS": "{}"}), \
+                        patch.object(backend, "is_vm_exists", return_value=False), \
+                        patch.object(backend, "_run", return_value=completed), \
+                        patch.object(backend, "_apply_cloud_init"), \
+                        patch.object(backend, "_wait_for_agent") as wait_mock, \
+                        patch.object(backend, "_exec_vmid", return_value=("", "", 0)):
+                    self.assertTrue(backend.create_vm("sn", config))
+                wait_mock.assert_called_once_with(120, expected_timeout)
+
+    def test_guest_agent_timeout_fails_creation_and_skips_init_commands(self):
+        backend = self._backend()
+        config = vm_mgr.VMConfig("sn")
+        config.vm_params = {"template_vmid": 9000}
+        config.init_commands = ["echo must-not-run"]
+        completed = subprocess.CompletedProcess([], 0, "120\n", "")
+
+        with patch.dict(vm_mgr.os.environ, {"BUCKYOS_PVE_VM_PARAMS": "{}"}), \
+                patch.object(backend, "is_vm_exists", return_value=False), \
+                patch.object(backend, "_run", return_value=completed) as run_mock, \
+                patch.object(backend, "_apply_cloud_init"), \
+                patch.object(backend, "_wait_for_agent", side_effect=TimeoutError("agent unavailable")), \
+                patch.object(backend, "_exec_vmid") as guest_mock, \
+                patch.object(backend, "exec_command") as init_mock:
+            self.assertFalse(backend.create_vm("sn", config))
+
+        guest_mock.assert_not_called()
+        init_mock.assert_not_called()
+        self.assertIn(["qm", "stop", "120"], [call.args[0] for call in run_mock.call_args_list])
+        self.assertIn(["qm", "destroy", "120", "--purge", "1", "--destroy-unreferenced-disks", "1"],
+                      [call.args[0] for call in run_mock.call_args_list])
+
+    def test_cleanup_timeout_does_not_hide_creation_failure(self):
+        backend = self._backend()
+        config = vm_mgr.VMConfig("sn")
+        config.vm_params = {"template_vmid": 9000}
+
+        def run(args, **kwargs):
+            if args[:2] == ["qm", "stop"]:
+                raise subprocess.TimeoutExpired(args, 300)
+            return subprocess.CompletedProcess(args, 0, "120\n", "")
+
+        with patch.dict(vm_mgr.os.environ, {"BUCKYOS_PVE_VM_PARAMS": "{}"}), \
+                patch.object(backend, "is_vm_exists", return_value=False), \
+                patch.object(backend, "_run", side_effect=run), \
+                patch.object(backend, "_apply_cloud_init"), \
+                patch.object(backend, "_wait_for_agent", side_effect=TimeoutError("agent unavailable")):
+            self.assertFalse(backend.create_vm("sn", config))
+
     def test_agent_upload_streams_one_mib_chunks(self):
         backend = self._backend()
         with tempfile.TemporaryDirectory() as tmp:

@@ -5,6 +5,16 @@ from src.console import _configure_output_stream
 
 
 class ConsoleOutputTests(unittest.TestCase):
+    def test_redirected_progress_is_flushed_at_each_line(self):
+        output = io.BytesIO()
+        stream = io.TextIOWrapper(output, encoding="utf-8")
+
+        _configure_output_stream(stream)
+        stream.write("Waiting for guest agent...\n")
+
+        self.assertEqual(output.getvalue(), b"Waiting for guest agent...\n")
+        stream.detach()
+
     def test_unsupported_characters_are_replaced_for_legacy_code_page(self):
         output = io.BytesIO()
         stream = io.TextIOWrapper(output, encoding="cp1252")

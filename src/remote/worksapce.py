@@ -83,8 +83,20 @@ class Workspace:
     def create_vms(self):
         # Create VMs based on nodes configuration in workspace
         vm_mgr = VMManager.get_instance()
+        failed_nodes = []
         for node_id,node_config in self.nodes.nodes.items():
-            vm_mgr.create_vm(node_id, node_config)
+            try:
+                created = vm_mgr.create_vm(node_id, node_config)
+            except (OSError, RuntimeError, ValueError) as error:
+                print(f"Failed to create VM {node_id}: {error}", file=sys.stderr)
+                created = False
+            if not created:
+                failed_nodes.append(node_id)
+        if failed_nodes:
+            raise RuntimeError(
+                f"VM creation failed for nodes: {', '.join(failed_nodes)}; "
+                "skipping instance_commands for this workspace"
+            )
         # After all VMs are created, call init_commands in order
         print(f"all nodes created, call instance_commands after 10 seconds...")
         time.sleep(10)
@@ -98,7 +110,7 @@ class Workspace:
             if node_config.instance_commands is None:
                 continue
             for command in node_config.instance_commands:
-                self.run(node_id, [command], env_params)
+                self.run(node_id, [command], env_params, check=True)
 
     def stop_vms(self):
         # Stop VMs based on nodes configuration in workspace

@@ -769,7 +769,9 @@ class PVEVMBackend(VMBackend):
             if params.get("disk"):
                 self._run(["qm", "disk", "resize", str(vmid), "scsi0", str(params["disk"])])
             self._run(["qm", "start", str(vmid)])
-            self._wait_for_agent(vmid, int(params.get("agent_timeout", 180)))
+            agent_timeout = int(params.get("agent_timeout", 900))
+            print(f"Waiting up to {agent_timeout}s for QEMU guest agent on {vm_name} (VM {vmid})...")
+            self._wait_for_agent(vmid, agent_timeout)
             stdout, stderr, code = self._exec_vmid(
                 vmid, "cloud-init status --wait",
                 timeout=int(params.get("cloud_init_timeout", 600)),
@@ -788,7 +790,7 @@ class PVEVMBackend(VMBackend):
                     self._run(["qm", "stop", str(vmid)], check=False)
                     self._run(["qm", "destroy", str(vmid), "--purge", "1",
                                "--destroy-unreferenced-disks", "1"], check=False)
-                except OSError as cleanup_error:
+                except (OSError, subprocess.SubprocessError) as cleanup_error:
                     print(f"Failed to clean up PVE VM {vmid}: {cleanup_error}")
             return False
 
@@ -859,7 +861,7 @@ class PVEVMBackend(VMBackend):
             if result.returncode == 0:
                 return
             time.sleep(2)
-        raise TimeoutError(f"QEMU guest agent did not become ready for VM {vmid}")
+        raise TimeoutError(f"QEMU guest agent did not become ready for VM {vmid} within {timeout}s")
 
     def _wait_until_ready(self, vmid: int, timeout: int = 180):
         """After (re)booting, wait for the guest agent and a bridge-reachable IPv4."""
